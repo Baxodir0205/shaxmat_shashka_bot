@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Chess Pro Animated</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; font-family: -apple-system, sans-serif; -webkit-tap-highlight-color: transparent; }
+        body { background: #1a1a1a; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 10px; color: white; overflow: hidden; }
+        .game-container { width: 100%; max-width: 400px; background: #262421; border-radius: 12px; padding: 15px; box-shadow: 0 15px 35px rgba(0,0,0,0.7); }
+        .game-header { background: #312e2b; border-radius: 8px; padding: 12px; margin-bottom: 15px; }
+
+        .board-wrapper {
+            background: #312e2b;
+            padding: 2px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+            width: 100%;
+            aspect-ratio: 1 / 1;
+            position: relative;
+        }
+        .board { display: grid; grid-template-columns: repeat(8, 1fr); grid-template-rows: repeat(8, 1fr); width: 100%; height: 100%; }
+        .cell { width: 100%; height: 100%; position: relative; cursor: pointer; }
+        .cell.light { background: #ebecd0; }
+        .cell.dark { background: #779556; }
+        .cell.selected { background: #f6f669 !important; }
+
+
+        .piece {
+            width: 12.5%;
+            height: 12.5%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: min(9vw, 40px);
+            position: absolute;
+            z-index: 10;
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            pointer-events: none;
+        }
+
+        /* Yurish nuqtalari (Hint) - TUZATILDI */
+        .hint::after {
+            content: ""; width: 15px; height: 15px; background: rgba(0,0,0,0.15);
+            border-radius: 50%; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+        }
+        .hint.capture::after {
+            width: 80%; height: 80%; background: transparent;
+            border: 4px solid rgba(0,0,0,0.15); border-radius: 50%;
+        }
+
+        .status-box { background: #312e2b; padding: 10px; border-radius: 8px; text-align: center; font-weight: bold; margin-bottom: 15px; color: #bababa; border-bottom: 2px solid #7fa650; }
+        .btn-main-group { display: flex; gap: 8px; }
+        .btn-action { flex: 1; padding: 12px; border: none; border-radius: 8px; font-weight: bold; background: #45423e; color: white; cursor: pointer; }
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 100; justify-content: center; align-items: center; }
+        .modal-content { background: #262421; padding: 20px; border-radius: 12px; width: 80%; text-align: center; }
+        .level-btn { display: block; width: 100%; padding: 12px; margin: 8px 0; border-radius: 6px; border: none; background: #312e2b; color: white; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<div class="game-container">
+    <div class="game-header">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span id="currentLevelDisplay" style="font-size: 13px; color: #aaa;">Daraja: Oson</span>
+            <button onclick="toggleModal(true)" style="background: #7fa650; color: white; border: none; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: bold;">DARAJA</button>
+        </div>
+    </div>
+    <div class="status-box" id="status">Sizning navbatingiz</div>
+    <div class="board-wrapper" id="boardWrapper">
+        <div id="board" class="board"></div>
+    </div>
+    <div class="btn-main-group">
+        <button class="btn-action" onclick="resetGame()">Yangi o'yin</button>
+        <button class="btn-action" style="color: #ff7675;" onclick="tg.close()">Chiqish</button>
+    </div>
+</div>
+
+<div id="levelModal" class="modal">
+    <div class="modal-content">
+        <h3 style="color: #7fa650; margin-bottom: 15px;">AI QIYINLIGI</h3>
+        <button class="level-btn" onclick="selectLevel(1, 'Oson')">Oson</button>
+        <button class="level-btn" onclick="selectLevel(2, 'O\'rtacha')">O'rtacha</button>
+        <button class="level-btn" onclick="selectLevel(3, 'Qiyin')">Qiyin</button>
+        <button class="level-btn" onclick="selectLevel(4, 'Grandmaster')">Grandmaster</button>
+        <button class="level-btn" style="background: #7fa650;" onclick="toggleModal(false)">Yopish</button>
+    </div>
+</div>
+
+<script>
+    const tg = window.Telegram.WebApp; tg.expand();
+    const symbols = {
+        white: { king: '♔', queen: '♕', rook: '♖', bishop: '♗', knight: '♘', pawn: '♙' },
+        black: { king: '♚', queen: '♛', rook: '♜', bishop: '♝', knight: '♞', pawn: '♟' }
+    };
+    const values = { pawn: 10, knight: 30, bishop: 30, rook: 50, queen: 90, king: 900 };
+    let board = [], selectedCell = null, turn = 'white', currentLevel = 1, hints = [];
+
+    function initBoard() {
+        board = Array(8).fill(null).map(() => Array(8).fill(null));
+        const layout = ['rook', 'knight', 'bishop', 'queen', 'king', 'bishop', 'knight', 'rook'];
+        for (let i = 0; i < 8; i++) {
+            board[0][i] = { p: layout[i], c: 'black', id: `b-${layout[i]}-${i}` };
+            board[1][i] = { p: 'pawn', c: 'black', id: `b-p-1${i}` };
+            board[6][i] = { p: 'pawn', c: 'white', id: `w-p-6${i}` };
+            board[7][i] = { p: layout[i], c: 'white', id: `w-${layout[i]}-${i}` };
+        }
+    }
+
+    function renderBoard() {
+        const boardEl = document.getElementById('board');
+        const wrapper = document.getElementById('boardWrapper');
+        boardEl.innerHTML = '';
+
+        for (let r = 0; r < 8; r++) {
+            for (let c = 0; c < 8; c++) {
+                const cell = document.createElement('div');
+                cell.className = `cell ${(r + c) % 2 === 0 ? 'light' : 'dark'}`;
+                if (selectedCell?.r === r && selectedCell?.c === c) cell.classList.add('selected');
+                if (hints.some(h => h.tr === r && h.tc === c)) {
+                    cell.classList.add('hint');
+                    if (board[r][c]) cell.classList.add('capture');
+                }
+                cell.onclick = () => handleClick(r, c);
+                boardEl.appendChild(cell);
+            }
+        }
+
+        const activeIds = [];
+        for(let r=0; r<8; r++) for(let c=0; c<8; c++) if(board[r][c]) activeIds.push(board[r][c].id);
+
+        document.querySelectorAll('.piece').forEach(p => {
+            if(!activeIds.includes(p.id)) p.remove();
+        });
+
+        for (let r = 0; r < 8; r++) {
+            for (let c = 0; c < 8; c++) {
+                const pData = board[r][c];
+                if (pData) {
+                    let pEl = document.getElementById(pData.id);
+                    if (!pEl) {
+                        pEl = document.createElement('div');
+                        pEl.id = pData.id;
+                        wrapper.appendChild(pEl);
+                    }
+                    pEl.className = 'piece';
+                    pEl.textContent = symbols[pData.c][pData.p];
+                    pEl.style.color = pData.c === 'white' ? '#fff' : '#000';
+                    pEl.style.left = (c * 12.5) + "%";
+                    pEl.style.top = (r * 12.5) + "%";
+                }
+            }
+        }
+    }
+
+    function handleClick(r, c) {
+        if (turn !== 'white') return;
+        const p = board[r][c];
+        if (p?.c === 'white') {
+            selectedCell = { r, c };
+            hints = getMoves(r, c);
+        } else if (selectedCell) {
+            const move = hints.find(h => h.tr === r && h.tc === c);
+            if (move) {
+                doMove(selectedCell.r, selectedCell.c, r, c);
+                turn = 'black';
+                selectedCell = null; hints = [];
+                document.getElementById('status').innerText = "AI o'ylamoqda...";
+                setTimeout(aiMove, 600);
+            } else { selectedCell = null; hints = []; }
+        }
+        renderBoard();
+    }
+
+    function getMoves(r, c) {
+        const p = board[r][c]; if (!p) return [];
+        let m = [];
+        const dirs = {
+            rook: [[0,1],[0,-1],[1,0],[-1,0]],
+            bishop: [[1,1],[1,-1],[-1,1],[-1,-1]],
+            queen: [[0,1],[0,-1],[1,0],[-1,0],[1,1],[1,-1],[-1,1],[-1,-1]],
+            king: [[0,1],[0,-1],[1,0],[-1,0],[1,1],[1,-1],[-1,1],[-1,-1]],
+            knight: [[2,1],[2,-1],[-2,1],[-2,-1],[1,2],[1,-2],[-1,2],[-1,-2]]
+        };
+        if (p.p === 'pawn') {
+            let d = p.c === 'white' ? -1 : 1;
+            if (board[r+d] && !board[r+d][c]) {
+                m.push({tr: r+d, tc: c});
+                if (((p.c==='white'&&r===6)||(p.c==='black'&&r===1)) && !board[r+d][c] && !board[r+2*d][c]) m.push({tr: r+2*d, tc: c});
+            }
+            [[-1,d],[1,d]].forEach(atk => {
+                let nr = r+atk[1], nc = c+atk[0];
+                if (board[nr] && board[nr][nc] && board[nr][nc].c !== p.c) m.push({tr: nr, tc: nc});
+            });
+        } else if (['rook','bishop','queen'].includes(p.p)) {
+            dirs[p.p].forEach(d => {
+                let nr = r+d[0], nc = c+d[1];
+                while(nr>=0 && nr<8 && nc>=0 && nc<8) {
+                    if (!board[nr][nc]) m.push({tr:nr, tc:nc});
+                    else { if(board[nr][nc].c !== p.c) m.push({tr:nr, tc:nc}); break; }
+                    nr+=d[0]; nc+=d[1];
+                }
+            });
+        } else {
+            dirs[p.p].forEach(d => {
+                let nr = r+d[0], nc = c+d[1];
+                if (nr>=0 && nr<8 && nc>=0 && nc<8 && (!board[nr][nc] || board[nr][nc].c !== p.c)) m.push({tr:nr, tc:nc});
+            });
+        }
+        return m.map(move => ({fr: r, fc: c, ...move}));
+    }
+
+    function doMove(fr, fc, tr, tc) {
+        if(board[tr][tc]) {
+
+        }
+        board[tr][tc] = board[fr][fc];
+        board[fr][fc] = null;
+        if (board[tr][tc].p === 'pawn' && (tr === 0 || tr === 7)) board[tr][tc].p = 'queen';
+        renderBoard();
+    }
+
+    function aiMove() {
+        let all = [];
+        for(let r=0; r<8; r++) for(let c=0; c<8; c++) if(board[r][c]?.c === 'black') all = all.concat(getMoves(r, c));
+        if (!all.length) {
+            document.getElementById('status').innerText = "Mot! Siz yutdingiz.";
+            sendGameOver(true);
+            return;
+        }
+
+        let bestMove;
+        if (currentLevel === 1) {
+            bestMove = all[Math.floor(Math.random() * all.length)];
+        } else {
+            let maxS = -20000;
+            all.forEach(m => {
+                let s = 0;
+                const target = board[m.tr][m.tc];
+                if (target) s += values[target.p] * 10;
+                if (currentLevel >= 2 && m.tr >= 2 && m.tr <= 5 && m.tc >= 2 && m.tc <= 5) s += 3;
+                if (s > maxS) { maxS = s; bestMove = m; }
+            });
+        }
+
+        doMove(bestMove.fr, bestMove.fc, bestMove.tr, bestMove.tc);
+        turn = 'white';
+        document.getElementById('status').innerText = "Sizning navbatingiz";
+        renderBoard();
+    }
+
+    function sendGameOver(won) {
+        tg.sendData(JSON.stringify({
+            action: 'game_over',
+            game_type: 'chess',
+            won: won,
+            ai_level: currentLevel
+        }));
+    }
+
+    function toggleModal(s) { document.getElementById('levelModal').style.display = s ? 'flex' : 'none'; }
+    function selectLevel(l, n) { currentLevel = l; document.getElementById('currentLevelDisplay').innerText = "Daraja: " + n; toggleModal(false); resetGame(); }
+    function resetGame() {
+        document.querySelectorAll('.piece').forEach(p => p.remove());
+        initBoard(); turn = 'white'; selectedCell = null; hints = [];
+        document.getElementById('status').innerText = "Sizning navbatingiz"; renderBoard();
+    }
+
+    initBoard(); renderBoard();
+</script>
+</body>
+</html>

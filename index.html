@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Shashka Pro Animated</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; font-family: sans-serif; -webkit-tap-highlight-color: transparent; }
+        body { background: #1a1a1a; display: flex; justify-content: center; align-items: center; min-height: 100vh; color: white; }
+        .game-container { width: 100%; max-width: 400px; background: #262421; border-radius: 12px; padding: 15px; }
+
+        /* Doska */
+        .board-wrapper {
+            width: 100%;
+            aspect-ratio: 1 / 1;
+            background: #312e2b;
+            padding: 2px;
+            border-radius: 4px;
+            margin: 15px 0;
+            position: relative;
+        }
+        .board {
+            display: grid;
+            grid-template-columns: repeat(8, 1fr);
+            grid-template-rows: repeat(8, 1fr);
+            width: 100%;
+            height: 100%;
+        }
+        .cell { width: 100%; height: 100%; position: relative; cursor: pointer; }
+        .cell.light { background: #ebecd0; }
+        .cell.dark { background: #779556; }
+        .cell.selected { background: #f6f669 !important; }
+
+
+        .piece {
+            width: 11%;
+            height: 11%;
+            border-radius: 50%;
+            position: absolute;
+            z-index: 10;
+            transition: all 0.4s cubic-bezier(0.45, 0.05, 0.55, 0.95);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            pointer-events: none;
+        }
+        .piece.white { background: #fff; border: 3px solid #ccc; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+        .piece.black { background: #333; border: 3px solid #000; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+        .piece.king::after { content: "★"; color: gold; font-size: 20px; }
+
+        .hint::after { content: ""; width: 25%; height: 25%; background: rgba(0,0,0,0.2); border-radius: 50%; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); }
+
+        .status-box { background: #312e2b; padding: 10px; border-radius: 8px; text-align: center; font-weight: bold; border-bottom: 2px solid #7fa650; }
+        .btn-main-group { display: flex; gap: 8px; }
+        .btn-action { flex: 1; padding: 12px; border: none; border-radius: 8px; font-weight: bold; background: #45423e; color: white; cursor: pointer; }
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 100; justify-content: center; align-items: center; }
+        .modal-content { background: #262421; padding: 20px; border-radius: 12px; width: 80%; text-align: center; }
+        .level-btn { display: block; width: 100%; padding: 12px; margin: 8px 0; border-radius: 6px; border: none; background: #312e2b; color: white; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<div class="game-container">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+        <span id="currentLevelDisplay" style="color: #aaa; font-size: 14px;">Daraja: Oson</span>
+        <button onclick="toggleModal(true)" style="background: #7fa650; border: none; padding: 5px 10px; color: white; border-radius: 4px; font-size: 12px;">DARAJA</button>
+    </div>
+    <div class="status-box" id="status">Sizning navbatingiz</div>
+    <div class="board-wrapper" id="boardWrapper">
+        <div id="board" class="board"></div>
+        </div>
+    <div class="btn-main-group">
+        <button class="btn-action" onclick="resetGame()">Yangi o'yin</button>
+        <button class="btn-action" style="color: #ff7675;" onclick="tg.close()">Chiqish</button>
+    </div>
+</div>
+
+<div id="levelModal" class="modal">
+    <div class="modal-content">
+        <h3 style="color: #7fa650; margin-bottom: 15px;">AI QIYINLIGI</h3>
+        <button class="level-btn" onclick="selectLevel(1, 'Oson')">Oson</button>
+        <button class="level-btn" onclick="selectLevel(2, 'O\'rtacha')">O'rtacha</button>
+        <button class="level-btn" onclick="selectLevel(3, 'Qiyin')">Qiyin</button>
+        <button class="level-btn" onclick="selectLevel(4, 'Grandmaster')">Grandmaster</button>
+        <button class="level-btn" style="background: #7fa650;" onclick="toggleModal(false)">Yopish</button>
+    </div>
+</div>
+
+<script>
+    const tg = window.Telegram.WebApp; tg.expand();
+    let board = [], selectedCell = null, turn = 'white', currentLevel = 1, hints = [], mustJump = false;
+
+    function initBoard() {
+        board = Array(8).fill(null).map(() => Array(8).fill(null));
+        for (let r = 0; r < 8; r++) {
+            for (let c = 0; c < 8; c++) {
+                if ((r + c) % 2 !== 0) {
+                    if (r < 3) board[r][c] = { c: 'black', k: false, id: `p-b-${r}-${c}` };
+                    else if (r > 4) board[r][c] = { c: 'white', k: false, id: `p-w-${r}-${c}` };
+                }
+            }
+        }
+        checkGlobalMustJump();
+    }
+
+    // Animatsiyali renderBoard
+    function renderBoard() {
+        const boardEl = document.getElementById('board');
+        const wrapper = document.getElementById('boardWrapper');
+        boardEl.innerHTML = '';
+
+        // Faqat kataklarni chizamiz
+        for (let r = 0; r < 8; r++) {
+            for (let c = 0; c < 8; c++) {
+                const cell = document.createElement('div');
+                cell.className = `cell ${(r + c) % 2 === 0 ? 'light' : 'dark'}`;
+                if (selectedCell?.r === r && selectedCell?.c === c) cell.classList.add('selected');
+                if (hints.some(h => h.tr === r && h.tc === c)) cell.classList.add('hint');
+                cell.onclick = () => handleClick(r, c);
+                boardEl.appendChild(cell);
+            }
+        }
+
+
+        const oldPieces = document.querySelectorAll('.piece');
+        const currentIds = [];
+        for(let r=0; r<8; r++) for(let c=0; c<8; c++) if(board[r][c]) currentIds.push(board[r][c].id);
+
+        oldPieces.forEach(p => {
+            if(!currentIds.includes(p.id)) p.remove();
+        });
+
+        for (let r = 0; r < 8; r++) {
+            for (let c = 0; c < 8; c++) {
+                const pData = board[r][c];
+                if (pData) {
+                    let pEl = document.getElementById(pData.id);
+                    if (!pEl) {
+                        pEl = document.createElement('div');
+                        pEl.id = pData.id;
+                        wrapper.appendChild(pEl);
+                    }
+                    pEl.className = `piece ${pData.c} ${pData.k ? 'king' : ''}`;
+
+                    pEl.style.left = (c * 12.5 + 0.7) + "%";
+                    pEl.style.top = (r * 12.5 + 0.7) + "%";
+                }
+            }
+        }
+    }
+
+    function checkGlobalMustJump() {
+        mustJump = false;
+        for (let r = 0; r < 8; r++) {
+            for (let c = 0; c < 8; c++) {
+                if (board[r][c]?.c === turn) {
+                    const moves = getPieceMoves(r, c);
+                    if (moves.some(m => m.jump)) { mustJump = true; return; }
+                }
+            }
+        }
+    }
+
+    function getPieceMoves(r, c) {
+        const p = board[r][c]; if (!p) return [];
+        let moves = [];
+        const dirs = p.k ? [[1,1],[1,-1],[-1,1],[-1,-1]] : (p.c === 'white' ? [[-1,1],[-1,-1]] : [[1,1],[1,-1]]);
+
+        dirs.forEach(d => {
+            let nr = r + d[0], nc = c + d[1];
+            if (nr>=0 && nr<8 && nc>=0 && nc<8) {
+                if (!board[nr][nc]) {
+                    if (!mustJump) moves.push({tr: nr, tc: nc, jump: null});
+                } else if (board[nr][nc].c !== p.c) {
+                    let jr = nr + d[0], jc = nc + d[1];
+                    if (jr>=0 && jr<8 && jc>=0 && jc<8 && !board[jr][jc]) {
+                        moves.push({tr: jr, tc: jc, jump: {r: nr, c: nc}});
+                    }
+                }
+            }
+        });
+        if (mustJump) moves = moves.filter(m => m.jump);
+        return moves;
+    }
+
+    function handleClick(r, c) {
+        if (turn !== 'white') return;
+        if (board[r][c]?.c === 'white') {
+            selectedCell = { r, c };
+            hints = getPieceMoves(r, c);
+        } else if (selectedCell) {
+            const move = hints.find(h => h.tr === r && h.tc === c);
+            if (move) executeMove(selectedCell.r, selectedCell.c, move);
+        }
+        renderBoard();
+    }
+
+    function executeMove(fr, fc, move) {
+        const piece = board[fr][fc];
+        board[move.tr][move.tc] = piece;
+        board[fr][fc] = null;
+
+        if (move.jump) {
+            setTimeout(() => {
+                board[move.jump.r][move.jump.c] = null;
+                renderBoard();
+            }, 200);
+        }
+
+        if ((move.tr === 0 && piece.c === 'white') || (move.tr === 7 && piece.c === 'black')) piece.k = true;
+
+        renderBoard();
+
+        if (move.jump) {
+            mustJump = true;
+            const nextJumps = getPieceMoves(move.tr, move.tc).filter(m => m.jump);
+            if (nextJumps.length > 0) {
+                setTimeout(() => {
+                    selectedCell = { r: move.tr, c: move.tc };
+                    hints = nextJumps;
+                    renderBoard();
+                }, 400);
+                return;
+            }
+        }
+
+        setTimeout(() => {
+            turn = turn === 'white' ? 'black' : 'white';
+            selectedCell = null; hints = [];
+            checkGlobalMustJump();
+            if (turn === 'black') {
+                document.getElementById('status').innerText = "AI o'ylamoqda...";
+                setTimeout(aiMove, 600);
+            } else {
+                document.getElementById('status').innerText = "Sizning navbatingiz";
+            }
+            renderBoard();
+        }, 400);
+    }
+
+    function aiMove() {
+        let all = [];
+        for(let r=0; r<8; r++) for(let c=0; c<8; c++) if(board[r][c]?.c === 'black') {
+            const m = getPieceMoves(r, c);
+            m.forEach(move => all.push({fr: r, fc: c, ...move}));
+        }
+
+        if (all.length === 0) { document.getElementById('status').innerText = "G'alaba! Siz yutdingiz."; return; }
+
+        let bestMove;
+        if (currentLevel === 1) {
+            bestMove = all[Math.floor(Math.random() * all.length)];
+        } else {
+            all.sort((a, b) => {
+                let sA = a.jump ? 100 : 0;
+                let sB = b.jump ? 100 : 0;
+                if (currentLevel >= 3) {
+                    if (a.tr === 7) sA += 50;
+                    if (b.tr === 7) sB += 50;
+                }
+                return sB - sA;
+            });
+            bestMove = all[0];
+        }
+
+        executeMove(bestMove.fr, bestMove.fc, bestMove);
+    }
+
+    function toggleModal(s) { document.getElementById('levelModal').style.display = s ? 'flex' : 'none'; }
+    function selectLevel(l, n) { currentLevel = l; document.getElementById('currentLevelDisplay').innerText = "Daraja: " + n; toggleModal(false); resetGame(); }
+    function resetGame() {
+
+        document.querySelectorAll('.piece').forEach(p => p.remove());
+        initBoard();
+        turn = 'white';
+        selectedCell = null;
+        hints = [];
+        document.getElementById('status').innerText = "Sizning navbatingiz";
+        renderBoard();
+    }
+
+    initBoard(); renderBoard();
+</script>
+</body>
+</html>
