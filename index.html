@@ -10,7 +10,6 @@
         body { background: #1a1a1a; display: flex; justify-content: center; align-items: center; min-height: 100vh; color: white; }
         .game-container { width: 100%; max-width: 400px; background: #262421; border-radius: 12px; padding: 15px; }
 
-        /* Doska */
         .board-wrapper {
             width: 100%;
             aspect-ratio: 1 / 1;
@@ -31,7 +30,6 @@
         .cell.light { background: #ebecd0; }
         .cell.dark { background: #779556; }
         .cell.selected { background: #f6f669 !important; }
-
 
         .piece {
             width: 11%;
@@ -69,7 +67,7 @@
     <div class="status-box" id="status">Sizning navbatingiz</div>
     <div class="board-wrapper" id="boardWrapper">
         <div id="board" class="board"></div>
-        </div>
+    </div>
     <div class="btn-main-group">
         <button class="btn-action" onclick="resetGame()">Yangi o'yin</button>
         <button class="btn-action" style="color: #ff7675;" onclick="tg.close()">Chiqish</button>
@@ -104,13 +102,11 @@
         checkGlobalMustJump();
     }
 
-    // Animatsiyali renderBoard
     function renderBoard() {
         const boardEl = document.getElementById('board');
         const wrapper = document.getElementById('boardWrapper');
         boardEl.innerHTML = '';
 
-        // Faqat kataklarni chizamiz
         for (let r = 0; r < 8; r++) {
             for (let c = 0; c < 8; c++) {
                 const cell = document.createElement('div');
@@ -122,12 +118,10 @@
             }
         }
 
-
-        const oldPieces = document.querySelectorAll('.piece');
         const currentIds = [];
         for(let r=0; r<8; r++) for(let c=0; c<8; c++) if(board[r][c]) currentIds.push(board[r][c].id);
 
-        oldPieces.forEach(p => {
+        document.querySelectorAll('.piece').forEach(p => {
             if(!currentIds.includes(p.id)) p.remove();
         });
 
@@ -142,7 +136,6 @@
                         wrapper.appendChild(pEl);
                     }
                     pEl.className = `piece ${pData.c} ${pData.k ? 'king' : ''}`;
-
                     pEl.style.left = (c * 12.5 + 0.7) + "%";
                     pEl.style.top = (r * 12.5 + 0.7) + "%";
                 }
@@ -165,17 +158,41 @@
     function getPieceMoves(r, c) {
         const p = board[r][c]; if (!p) return [];
         let moves = [];
-        const dirs = p.k ? [[1,1],[1,-1],[-1,1],[-1,-1]] : (p.c === 'white' ? [[-1,1],[-1,-1]] : [[1,1],[1,-1]]);
+        const dirs = [[1, 1], [1, -1], [-1, 1], [-1, -1]];
 
         dirs.forEach(d => {
-            let nr = r + d[0], nc = c + d[1];
-            if (nr>=0 && nr<8 && nc>=0 && nc<8) {
-                if (!board[nr][nc]) {
-                    if (!mustJump) moves.push({tr: nr, tc: nc, jump: null});
-                } else if (board[nr][nc].c !== p.c) {
+            if (p.k) {
+                let nr = r + d[0], nc = c + d[1];
+                let enemyPos = null;
+                while (nr >= 0 && nr < 8 && nc >= 0 && nc < 8) {
+                    if (!board[nr][nc]) {
+                        if (!enemyPos) {
+                            if (!mustJump) moves.push({ tr: nr, tc: nc, jump: null });
+                        } else {
+                            moves.push({ tr: nr, tc: nc, jump: { ...enemyPos } });
+                        }
+                    } else {
+                        if (board[nr][nc].c === p.c) break;
+                        if (enemyPos) break;
+                        enemyPos = { r: nr, c: nc };
+                    }
+                    nr += d[0]; nc += d[1];
+                }
+            } else {
+                if (!mustJump) {
+                    const forward = p.c === 'white' ? -1 : 1;
+                    if (d[0] === forward) {
+                        let nr = r + d[0], nc = c + d[1];
+                        if (nr >= 0 && nr < 8 && nc >= 0 && nc < 8 && !board[nr][nc]) {
+                            moves.push({ tr: nr, tc: nc, jump: null });
+                        }
+                    }
+                }
+                let nr = r + d[0], nc = c + d[1];
+                if (nr >= 0 && nr < 8 && nc >= 0 && nc < 8 && board[nr][nc] && board[nr][nc].c !== p.c) {
                     let jr = nr + d[0], jc = nc + d[1];
-                    if (jr>=0 && jr<8 && jc>=0 && jc<8 && !board[jr][jc]) {
-                        moves.push({tr: jr, tc: jc, jump: {r: nr, c: nc}});
+                    if (jr >= 0 && jr < 8 && jc >= 0 && jc < 8 && !board[jr][jc]) {
+                        moves.push({ tr: jr, tc: jc, jump: { r: nr, c: nc } });
                     }
                 }
             }
@@ -202,10 +219,7 @@
         board[fr][fc] = null;
 
         if (move.jump) {
-            setTimeout(() => {
-                board[move.jump.r][move.jump.c] = null;
-                renderBoard();
-            }, 200);
+            board[move.jump.r][move.jump.c] = null;
         }
 
         if ((move.tr === 0 && piece.c === 'white') || (move.tr === 7 && piece.c === 'black')) piece.k = true;
@@ -216,11 +230,9 @@
             mustJump = true;
             const nextJumps = getPieceMoves(move.tr, move.tc).filter(m => m.jump);
             if (nextJumps.length > 0) {
-                setTimeout(() => {
-                    selectedCell = { r: move.tr, c: move.tc };
-                    hints = nextJumps;
-                    renderBoard();
-                }, 400);
+                selectedCell = { r: move.tr, c: move.tc };
+                hints = nextJumps;
+                renderBoard();
                 return;
             }
         }
@@ -229,14 +241,15 @@
             turn = turn === 'white' ? 'black' : 'white';
             selectedCell = null; hints = [];
             checkGlobalMustJump();
+            const statusEl = document.getElementById('status');
             if (turn === 'black') {
-                document.getElementById('status').innerText = "AI o'ylamoqda...";
+                statusEl.innerText = "AI o'ylamoqda...";
                 setTimeout(aiMove, 600);
             } else {
-                document.getElementById('status').innerText = "Sizning navbatingiz";
+                statusEl.innerText = "Sizning navbatingiz";
             }
             renderBoard();
-        }, 400);
+        }, 300);
     }
 
     function aiMove() {
@@ -248,34 +261,29 @@
 
         if (all.length === 0) { document.getElementById('status').innerText = "G'alaba! Siz yutdingiz."; return; }
 
+        let jumps = all.filter(m => m.jump);
         let bestMove;
-        if (currentLevel === 1) {
-            bestMove = all[Math.floor(Math.random() * all.length)];
-        } else {
-            all.sort((a, b) => {
-                let sA = a.jump ? 100 : 0;
-                let sB = b.jump ? 100 : 0;
-                if (currentLevel >= 3) {
-                    if (a.tr === 7) sA += 50;
-                    if (b.tr === 7) sB += 50;
-                }
-                return sB - sA;
-            });
-            bestMove = all[0];
-        }
 
+        if (jumps.length > 0) {
+            bestMove = jumps[Math.floor(Math.random() * jumps.length)];
+        } else {
+            if (currentLevel >= 3) {
+                all.sort((a, b) => (b.tr === 7 ? 1 : 0) - (a.tr === 7 ? 1 : 0));
+                bestMove = all[0];
+            } else {
+                bestMove = all[Math.floor(Math.random() * all.length)];
+            }
+        }
         executeMove(bestMove.fr, bestMove.fc, bestMove);
     }
 
     function toggleModal(s) { document.getElementById('levelModal').style.display = s ? 'flex' : 'none'; }
     function selectLevel(l, n) { currentLevel = l; document.getElementById('currentLevelDisplay').innerText = "Daraja: " + n; toggleModal(false); resetGame(); }
     function resetGame() {
-
         document.querySelectorAll('.piece').forEach(p => p.remove());
         initBoard();
         turn = 'white';
-        selectedCell = null;
-        hints = [];
+        selectedCell = null; hints = [];
         document.getElementById('status').innerText = "Sizning navbatingiz";
         renderBoard();
     }
