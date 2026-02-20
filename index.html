@@ -3,210 +3,91 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Shashka Pro Elite</title>
+    <title>Shashka Pro Animated</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
-        :root {
-            --bg-color: #1e1e26;
-            --container-bg: #2a2a35;
-            --cell-light: #f0d9b5;
-            --cell-dark: #b58863;
-            --accent: #4caf50;
-            --accent-hover: #45a049;
-            --text: #ffffff;
-        }
-
-        * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; -webkit-tap-highlight-color: transparent; }
-
-        body {
-            background: var(--bg-color);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            color: var(--text);
-        }
-
-        .game-container {
-            width: 95%;
-            max-width: 420px;
-            background: var(--container-bg);
-            border-radius: 20px;
-            padding: 20px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-        }
-
-        .header-ui {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 15px;
-        }
-
-        #currentLevelDisplay {
-            background: rgba(255,255,255,0.1);
-            padding: 5px 12px;
-            border-radius: 20px;
-            font-size: 13px;
-            color: #ccc;
-        }
-
-        .btn-settings {
-            background: var(--accent);
-            border: none;
-            padding: 6px 15px;
-            color: white;
-            border-radius: 15px;
-            font-size: 12px;
-            font-weight: bold;
-            cursor: pointer;
-            transition: 0.3s;
-        }
-
-        .btn-settings:hover { background: var(--accent-hover); transform: scale(1.05); }
-
-        .status-box {
-            background: rgba(0,0,0,0.2);
-            padding: 15px;
-            border-radius: 12px;
-            text-align: center;
-            font-weight: 600;
-            margin-bottom: 15px;
-            border-left: 4px solid var(--accent);
-            font-size: 18px;
-        }
+        * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; font-family: sans-serif; -webkit-tap-highlight-color: transparent; }
+        body { background: #1a1a1a; display: flex; justify-content: center; align-items: center; min-height: 100vh; color: white; }
+        .game-container { width: 100%; max-width: 400px; background: #262421; border-radius: 12px; padding: 15px; }
 
         .board-wrapper {
             width: 100%;
             aspect-ratio: 1 / 1;
-            background: #403d39;
-            padding: 8px;
-            border-radius: 8px;
-            box-shadow: inset 0 0 20px rgba(0,0,0,0.5);
-            margin-bottom: 20px;
+            background: #312e2b;
+            padding: 2px;
+            border-radius: 4px;
+            margin: 15px 0;
             position: relative;
         }
-
         .board {
             display: grid;
             grid-template-columns: repeat(8, 1fr);
             grid-template-rows: repeat(8, 1fr);
             width: 100%;
             height: 100%;
-            border: 2px solid #2b2825;
         }
-
         .cell { width: 100%; height: 100%; position: relative; cursor: pointer; }
-        .cell.light { background: var(--cell-light); }
-        .cell.dark { background: var(--cell-dark); }
-        .cell.selected { background: rgba(246, 246, 105, 0.8) !important; box-shadow: inset 0 0 15px rgba(0,0,0,0.2); }
+        .cell.light { background: #ebecd0; }
+        .cell.dark { background: #779556; }
+        .cell.selected { background: #f6f669 !important; }
 
         .piece {
-            width: 10%;
-            height: 10%;
+            width: 11%;
+            height: 11%;
             border-radius: 50%;
             position: absolute;
             z-index: 10;
-            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            transition: all 0.4s cubic-bezier(0.45, 0.05, 0.55, 0.95);
             display: flex;
             align-items: center;
             justify-content: center;
             pointer-events: none;
         }
+        .piece.white { background: #fff; border: 3px solid #ccc; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+        .piece.black { background: #333; border: 3px solid #000; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+        .piece.king::after { content: "★"; color: gold; font-size: 20px; }
 
-        /* Oq toshlar qizil rangga o'zgartirildi */
-        .piece.white {
-            background: radial-gradient(circle at 30% 30%, #ff4d4d, #b30000);
-            border: 1px solid #990000;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.4), inset 0 -2px 5px rgba(0,0,0,0.2);
-        }
+        .hint::after { content: ""; width: 25%; height: 25%; background: rgba(0,0,0,0.2); border-radius: 50%; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); }
 
-        .piece.black {
-            background: radial-gradient(circle at 30% 30%, #444, #111);
-            border: 1px solid #000;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.6), inset 0 -2px 5px rgba(255,255,255,0.1);
-        }
-
-        .piece.king::after {
-            content: "★";
-            color: #ffd700;
-            font-size: 22px;
-            text-shadow: 0 0 5px rgba(0,0,0,0.5);
-        }
-
-        .hint::after {
-            content: "";
-            width: 30%;
-            height: 30%;
-            background: rgba(0, 0, 0, 0.15);
-            border-radius: 50%;
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-        }
-
-        .btn-group { display: flex; gap: 10px; }
-        .btn-action {
-            flex: 1;
-            padding: 14px;
-            border: none;
-            border-radius: 12px;
-            font-weight: bold;
-            background: #3a3a4a;
-            color: white;
-            cursor: pointer;
-            transition: 0.2s;
-            box-shadow: 0 4px 0 #252530;
-        }
-
-        .btn-action:active { transform: translateY(3px); box-shadow: none; }
-        .btn-exit { color: #ff5252; }
-
-        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 100; justify-content: center; align-items: center; backdrop-filter: blur(5px); }
-        .modal-content { background: var(--container-bg); padding: 25px; border-radius: 20px; width: 85%; max-width: 320px; text-align: center; border: 1px solid rgba(255,255,255,0.1); }
-        .level-btn {
-            display: block; width: 100%; padding: 15px; margin: 10px 0; border-radius: 12px; border: none;
-            background: #3a3a4a; color: white; font-weight: bold; cursor: pointer; transition: 0.2s;
-        }
-        .level-btn:hover { background: var(--accent); }
+        .status-box { background: #312e2b; padding: 10px; border-radius: 8px; text-align: center; font-weight: bold; border-bottom: 2px solid #7fa650; }
+        .btn-main-group { display: flex; gap: 8px; }
+        .btn-action { flex: 1; padding: 12px; border: none; border-radius: 8px; font-weight: bold; background: #45423e; color: white; cursor: pointer; }
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 100; justify-content: center; align-items: center; }
+        .modal-content { background: #262421; padding: 20px; border-radius: 12px; width: 80%; text-align: center; }
+        .level-btn { display: block; width: 100%; padding: 12px; margin: 8px 0; border-radius: 6px; border: none; background: #312e2b; color: white; font-weight: bold; }
     </style>
 </head>
 <body>
 
 <div class="game-container">
-    <div class="header-ui">
-        <span id="currentLevelDisplay">Daraja: Oson</span>
-        <button class="btn-settings" onclick="toggleModal(true)">SOZLAMALAR</button>
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+        <span id="currentLevelDisplay" style="color: #aaa; font-size: 14px;">Daraja: Oson</span>
+        <button onclick="toggleModal(true)" style="background: #7fa650; border: none; padding: 5px 10px; color: white; border-radius: 4px; font-size: 12px;">DARAJA</button>
     </div>
-
     <div class="status-box" id="status">Sizning navbatingiz</div>
-
     <div class="board-wrapper" id="boardWrapper">
         <div id="board" class="board"></div>
     </div>
-
-    <div class="btn-group">
+    <div class="btn-main-group">
         <button class="btn-action" onclick="resetGame()">Yangi o'yin</button>
-        <button class="btn-action btn-exit" onclick="tg.close()">Chiqish</button>
+        <button class="btn-action" style="color: #ff7675;" onclick="tg.close()">Chiqish</button>
     </div>
 </div>
 
 <div id="levelModal" class="modal">
     <div class="modal-content">
-        <h3 style="margin-bottom: 20px; color: var(--accent);">AI Darajasini Tanlang</h3>
-        <button class="level-btn" onclick="selectLevel(1, 'Oson')">Oson (2 qadam)</button>
-        <button class="level-btn" onclick="selectLevel(2, 'O\'rtacha')">O'rtacha (5 qadam)</button>
-        <button class="level-btn" onclick="selectLevel(3, 'Qiyin')">Qiyin (8 qadam)</button>
-        <button class="level-btn" onclick="selectLevel(4, 'Grandmaster')" style="color: #ffd700;">Grandmaster (15 qadam)</button>
-        <button class="level-btn" style="background: var(--accent); margin-top: 15px;" onclick="toggleModal(false)">Yopish</button>
+        <h3 style="color: #7fa650; margin-bottom: 15px;">AI QIYINLIGI</h3>
+        <button class="level-btn" onclick="selectLevel(1, 'Oson')">Oson</button>
+        <button class="level-btn" onclick="selectLevel(2, 'O\'rtacha')">O'rtacha</button>
+        <button class="level-btn" onclick="selectLevel(3, 'Qiyin')">Qiyin</button>
+        <button class="level-btn" onclick="selectLevel(4, 'Grandmaster')">Grandmaster</button>
+        <button class="level-btn" style="background: #7fa650;" onclick="toggleModal(false)">Yopish</button>
     </div>
 </div>
 
 <script>
     const tg = window.Telegram.WebApp; tg.expand();
     let board = [], selectedCell = null, turn = 'white', currentLevel = 1, hints = [], mustJump = false;
-    let jumpingPiece = null;
 
     function initBoard() {
         board = Array(8).fill(null).map(() => Array(8).fill(null));
@@ -225,6 +106,7 @@
         const boardEl = document.getElementById('board');
         const wrapper = document.getElementById('boardWrapper');
         boardEl.innerHTML = '';
+
         for (let r = 0; r < 8; r++) {
             for (let c = 0; c < 8; c++) {
                 const cell = document.createElement('div');
@@ -235,17 +117,27 @@
                 boardEl.appendChild(cell);
             }
         }
+
         const currentIds = [];
         for(let r=0; r<8; r++) for(let c=0; c<8; c++) if(board[r][c]) currentIds.push(board[r][c].id);
-        document.querySelectorAll('.piece').forEach(p => { if(!currentIds.includes(p.id)) p.remove(); });
+
+        document.querySelectorAll('.piece').forEach(p => {
+            if(!currentIds.includes(p.id)) p.remove();
+        });
+
         for (let r = 0; r < 8; r++) {
             for (let c = 0; c < 8; c++) {
                 const pData = board[r][c];
                 if (pData) {
                     let pEl = document.getElementById(pData.id);
-                    if (!pEl) { pEl = document.createElement('div'); pEl.id = pData.id; wrapper.appendChild(pEl); }
+                    if (!pEl) {
+                        pEl = document.createElement('div');
+                        pEl.id = pData.id;
+                        wrapper.appendChild(pEl);
+                    }
                     pEl.className = `piece ${pData.c} ${pData.k ? 'king' : ''}`;
-                    pEl.style.left = (c * 12.5 + 1.2) + "%"; pEl.style.top = (r * 12.5 + 1.2) + "%";
+                    pEl.style.left = (c * 12.5 + 0.7) + "%";
+                    pEl.style.top = (r * 12.5 + 0.7) + "%";
                 }
             }
         }
@@ -257,24 +149,28 @@
             for (let c = 0; c < 8; c++) {
                 if (board[r][c]?.c === turn) {
                     const moves = getPieceMoves(r, c);
-                    if (moves.some(m => m.jump)) { mustJump = true; return true; }
+                    if (moves.some(m => m.jump)) { mustJump = true; return; }
                 }
             }
         }
-        return false;
     }
 
     function getPieceMoves(r, c) {
         const p = board[r][c]; if (!p) return [];
         let moves = [];
         const dirs = [[1, 1], [1, -1], [-1, 1], [-1, -1]];
+
         dirs.forEach(d => {
             if (p.k) {
-                let nr = r + d[0], nc = c + d[1], enemyPos = null;
+                let nr = r + d[0], nc = c + d[1];
+                let enemyPos = null;
                 while (nr >= 0 && nr < 8 && nc >= 0 && nc < 8) {
                     if (!board[nr][nc]) {
-                        if (!enemyPos) { if (!mustJump) moves.push({ tr: nr, tc: nc, jump: null }); }
-                        else moves.push({ tr: nr, tc: nc, jump: { ...enemyPos } });
+                        if (!enemyPos) {
+                            if (!mustJump) moves.push({ tr: nr, tc: nc, jump: null });
+                        } else {
+                            moves.push({ tr: nr, tc: nc, jump: { ...enemyPos } });
+                        }
                     } else {
                         if (board[nr][nc].c === p.c) break;
                         if (enemyPos) break;
@@ -284,16 +180,20 @@
                 }
             } else {
                 if (!mustJump) {
-                    const fwd = p.c === 'white' ? -1 : 1;
-                    if (d[0] === fwd) {
+                    const forward = p.c === 'white' ? -1 : 1;
+                    if (d[0] === forward) {
                         let nr = r + d[0], nc = c + d[1];
-                        if (nr >= 0 && nr < 8 && nc >= 0 && nc < 8 && !board[nr][nc]) moves.push({ tr: nr, tc: nc, jump: null });
+                        if (nr >= 0 && nr < 8 && nc >= 0 && nc < 8 && !board[nr][nc]) {
+                            moves.push({ tr: nr, tc: nc, jump: null });
+                        }
                     }
                 }
                 let nr = r + d[0], nc = c + d[1];
                 if (nr >= 0 && nr < 8 && nc >= 0 && nc < 8 && board[nr][nc] && board[nr][nc].c !== p.c) {
                     let jr = nr + d[0], jc = nc + d[1];
-                    if (jr >= 0 && jr < 8 && jc >= 0 && jc < 8 && !board[jr][jc]) moves.push({ tr: jr, tc: jc, jump: { r: nr, c: nc } });
+                    if (jr >= 0 && jr < 8 && jc >= 0 && jc < 8 && !board[jr][jc]) {
+                        moves.push({ tr: jr, tc: jc, jump: { r: nr, c: nc } });
+                    }
                 }
             }
         });
@@ -303,11 +203,7 @@
 
     function handleClick(r, c) {
         if (turn !== 'white') return;
-        if (jumpingPiece && (r !== jumpingPiece.r || c !== jumpingPiece.c)) {
-            if (hints.some(h => h.tr === r && h.tc === c)) { } else return;
-        }
         if (board[r][c]?.c === 'white') {
-            if (jumpingPiece && (r !== jumpingPiece.r || c !== jumpingPiece.c)) return;
             selectedCell = { r, c };
             hints = getPieceMoves(r, c);
         } else if (selectedCell) {
@@ -321,28 +217,45 @@
         const piece = board[fr][fc];
         board[move.tr][move.tc] = piece;
         board[fr][fc] = null;
-        if (move.jump) board[move.jump.r][move.jump.c] = null;
+
+        if (move.jump) {
+            board[move.jump.r][move.jump.c] = null;
+        }
+
         if ((move.tr === 0 && piece.c === 'white') || (move.tr === 7 && piece.c === 'black')) piece.k = true;
+
         renderBoard();
+
         if (move.jump) {
             mustJump = true;
             const nextJumps = getPieceMoves(move.tr, move.tc).filter(m => m.jump);
             if (nextJumps.length > 0) {
-                jumpingPiece = { r: move.tr, c: move.tc };
                 selectedCell = { r: move.tr, c: move.tc };
                 hints = nextJumps;
-                if (turn === 'black') setTimeout(() => executeMove(move.tr, move.tc, nextJumps[0]), 600);
                 renderBoard();
+
+                // AI (bot) uchun navbatdagi avtomatik urish
+                if (turn === 'black') {
+                    setTimeout(() => {
+                        let nextBestMove = nextJumps[Math.floor(Math.random() * nextJumps.length)];
+                        executeMove(move.tr, move.tc, nextBestMove);
+                    }, 500);
+                }
                 return;
             }
         }
-        jumpingPiece = null;
+
         setTimeout(() => {
             turn = turn === 'white' ? 'black' : 'white';
             selectedCell = null; hints = [];
             checkGlobalMustJump();
-            document.getElementById('status').innerText = turn === 'black' ? "AI o'ylamoqda..." : "Sizning navbatingiz";
-            if (turn === 'black') setTimeout(aiMove, 600);
+            const statusEl = document.getElementById('status');
+            if (turn === 'black') {
+                statusEl.innerText = "AI o'ylamoqda...";
+                setTimeout(aiMove, 600);
+            } else {
+                statusEl.innerText = "Sizning navbatingiz";
+            }
             renderBoard();
         }, 300);
     }
@@ -353,9 +266,12 @@
             const m = getPieceMoves(r, c);
             m.forEach(move => all.push({fr: r, fc: c, ...move}));
         }
+
         if (all.length === 0) { document.getElementById('status').innerText = "G'alaba! Siz yutdingiz."; return; }
+
         let jumps = all.filter(m => m.jump);
         let bestMove;
+
         if (jumps.length > 0) {
             bestMove = jumps[Math.floor(Math.random() * jumps.length)];
         } else {
@@ -371,7 +287,14 @@
 
     function toggleModal(s) { document.getElementById('levelModal').style.display = s ? 'flex' : 'none'; }
     function selectLevel(l, n) { currentLevel = l; document.getElementById('currentLevelDisplay').innerText = "Daraja: " + n; toggleModal(false); resetGame(); }
-    function resetGame() { document.querySelectorAll('.piece').forEach(p => p.remove()); initBoard(); turn = 'white'; selectedCell = null; hints = []; jumpingPiece = null; document.getElementById('status').innerText = "Sizning navbatingiz"; renderBoard(); }
+    function resetGame() {
+        document.querySelectorAll('.piece').forEach(p => p.remove());
+        initBoard();
+        turn = 'white';
+        selectedCell = null; hints = [];
+        document.getElementById('status').innerText = "Sizning navbatingiz";
+        renderBoard();
+    }
 
     initBoard(); renderBoard();
 </script>
