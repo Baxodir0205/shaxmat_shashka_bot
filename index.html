@@ -89,9 +89,6 @@
     const tg = window.Telegram.WebApp; tg.expand();
     let board = [], selectedCell = null, turn = 'white', currentLevel = 1, hints = [], mustJump = false;
 
-    // Bot strategiyasi (Yangi o'yinda o'zgaradi)
-    let botStrategy = 'center';
-
     function initBoard() {
         board = Array(8).fill(null).map(() => Array(8).fill(null));
         for (let r = 0; r < 8; r++) {
@@ -272,7 +269,7 @@
         }, 300);
     }
 
-    // --- STRATEGIK SUN'IY INTELLEKT (MINIMAX) ---
+    // --- PRO DARAJADAGI SUN'IY INTELLEKT (STRATEGIYALAR) ---
 
     function getSimulatedPieceMoves(b, r, c) {
         const p = b[r][c];
@@ -358,10 +355,12 @@
         }
     }
 
-    function evaluateBoard(b) {
-        let score = 0;
-        let blackCount = 0;
-        let whiteCount = 0;
+    // JAHON DARAJASIDAGI STRATEGIK BAHOLASH
+    function evaluateBoard(b, currentDepth) {
+        let blackScore = 0;
+        let whiteScore = 0;
+        let bCount = 0;
+        let wCount = 0;
 
         for (let r = 0; r < 8; r++) {
             for (let c = 0; c < 8; c++) {
@@ -369,68 +368,67 @@
                 if (p) {
                     let val = 0;
                     if (p.k) {
-                        val = 500;
+                        val = 800; // Dama eng kuchli qurol
+                        // Uzun diagonalni nazorat qilish (Dama dominatsiyasi)
+                        if (r === c || r + c === 7) val += 50;
                     } else {
                         val = 100;
-                        let advanceVal = p.c === 'black' ? r : (7 - r);
+                        let advance = p.c === 'black' ? r : (7 - r);
+                        val += advance * 5; // Temp va oldinga siljish
 
-                        // O'zgaruvchan strategiyalar qismi
-                        if (botStrategy === 'aggressive') {
-                            val += advanceVal * 5; // Tezroq damkaga qarab chopish
-                            if ((p.c === 'black' && r === 0) || (p.c === 'white' && r === 7)) val += 10;
-                        } else if (botStrategy === 'defensive') {
-                            val += advanceVal * 2; // Ehtiyotkorlik bilan borish
-                            if ((p.c === 'black' && r === 0) || (p.c === 'white' && r === 7)) val += 60; // Orqa chiziqni qattiq himoya qilish
-                        } else {
-                            val += advanceVal * 3;
-                            if ((p.c === 'black' && r === 0) || (p.c === 'white' && r === 7)) val += 30;
+                        // 1. Markazni nazorat qilish (c3-f6)
+                        if (r >= 2 && r <= 5 && c >= 2 && c <= 5) val += 20;
+
+                        // 2. Orqa qatorni yopish (Home row himoyasi)
+                        if ((p.c === 'black' && r === 0) || (p.c === 'white' && r === 7)) val += 40;
+
+                        // 3. Zanjir va Pozitsion struktura (O'z toshlari bilan himoyalanganlik)
+                        let backR = p.c === 'black' ? r - 1 : r + 1;
+                        if (backR >= 0 && backR < 8) {
+                            if ((c > 0 && b[backR][c - 1]?.c === p.c) ||
+                                (c < 7 && b[backR][c + 1]?.c === p.c)) {
+                                val += 15; // Himoyalangan tosh ustunligi
+                            }
                         }
                     }
 
-                    // Markaz va chekka strategiyalari
-                    let isCenter = (c >= 2 && c <= 5 && r >= 3 && r <= 4);
-                    let isEdge = (c === 0 || c === 7);
-
-                    if (botStrategy === 'center' && isCenter) {
-                        val += 25;
-                    } else if (botStrategy === 'edge' && isEdge) {
-                        val += 25;
-                    } else if (isCenter) {
-                        val += 10; // Umumiy holatdagi markaz foydasi
-                    }
-
                     if (p.c === 'black') {
-                        score += val;
-                        blackCount++;
+                        blackScore += val;
+                        bCount++;
                     } else {
-                        score -= val;
-                        whiteCount++;
+                        whiteScore += val;
+                        wCount++;
                     }
                 }
             }
         }
 
-        if (whiteCount === 0) return 999999;
-        if (blackCount === 0) return -999999;
+        // 4. Endshpil texnikasi (G'alabani tezlatish yoki yutqazishni sekinlashtirish)
+        if (wCount === 0) return 999999 + currentDepth; // Qanchalik tez yutsa, shuncha yaxshi
+        if (bCount === 0) return -999999 - currentDepth;
 
-        return score;
+        return blackScore - whiteScore;
     }
 
-    function minimax(b, depth, alpha, beta, isMaximizing) {
+    // Move Ordering orqali chuqurlikni oshirish
+    function minimax(b, depth, alpha, beta, isMaximizing, currentDepth = 0) {
         if (depth === 0) {
-            return evaluateBoard(b);
+            return evaluateBoard(b, currentDepth);
         }
 
         let color = isMaximizing ? 'black' : 'white';
         let moves = getAllLegalMoves(b, color);
 
-        if (moves.length === 0) return isMaximizing ? -99999 : 99999;
+        if (moves.length === 0) return isMaximizing ? -999999 + currentDepth : 999999 - currentDepth;
+
+        // Taktik tuzoqlarni birinchi hisoblash uchun urishlarni (jump) oldinga o'tkazamiz
+        moves.sort((m1, m2) => (m2.jump ? 1 : 0) - (m1.jump ? 1 : 0));
 
         if (isMaximizing) {
             let maxEval = -Infinity;
             for (let move of moves) {
                 let undoData = makeMove(b, move);
-                let ev = minimax(b, depth - 1, alpha, beta, false);
+                let ev = minimax(b, depth - 1, alpha, beta, false, currentDepth + 1);
                 unmakeMove(b, move, undoData);
                 maxEval = Math.max(maxEval, ev);
                 alpha = Math.max(alpha, ev);
@@ -441,7 +439,7 @@
             let minEval = Infinity;
             for (let move of moves) {
                 let undoData = makeMove(b, move);
-                let ev = minimax(b, depth - 1, alpha, beta, true);
+                let ev = minimax(b, depth - 1, alpha, beta, true, currentDepth + 1);
                 unmakeMove(b, move, undoData);
                 minEval = Math.min(minEval, ev);
                 beta = Math.min(beta, ev);
@@ -459,9 +457,9 @@
         }
 
         let depthLimit = 1;
-        if (currentLevel === 2) depthLimit = 2;
-        else if (currentLevel === 3) depthLimit = 4;
-        else if (currentLevel === 4) depthLimit = 6;
+        if (currentLevel === 2) depthLimit = 3;
+        else if (currentLevel === 3) depthLimit = 5;
+        else if (currentLevel === 4) depthLimit = 7; // PRO DARAJA: 7 qadam oldinni ko'radi (Taktika va strategiya)
 
         let bestMove = null;
 
@@ -471,9 +469,12 @@
             let bestScore = -Infinity;
             let bestMoves = [];
 
+            // Urishlarni birinchi navbatga qo'yib tekshiramiz
+            moves.sort((m1, m2) => (m2.jump ? 1 : 0) - (m1.jump ? 1 : 0));
+
             for (let move of moves) {
                 let undoData = makeMove(board, move);
-                let score = minimax(board, depthLimit - 1, -Infinity, Infinity, false);
+                let score = minimax(board, depthLimit - 1, -Infinity, Infinity, false, 0);
                 unmakeMove(board, move, undoData);
 
                 if (score > bestScore) {
@@ -483,6 +484,7 @@
                     bestMoves.push(move);
                 }
             }
+            // Teng kuchli pozitsiyalardan istalgan birini tanlaydi
             bestMove = bestMoves[Math.floor(Math.random() * bestMoves.length)];
         }
 
@@ -498,11 +500,6 @@
     }
 
     function resetGame() {
-        // Har yangi o'yinda bot yangi tasodifiy strategiya tanlaydi
-        const strategies = ['aggressive', 'defensive', 'center', 'edge'];
-        botStrategy = strategies[Math.floor(Math.random() * strategies.length)];
-        console.log("Botning joriy strategiyasi: " + botStrategy);
-
         document.querySelectorAll('.piece').forEach(p => p.remove());
         initBoard();
         turn = 'white';
