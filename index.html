@@ -89,6 +89,9 @@
     const tg = window.Telegram.WebApp; tg.expand();
     let board = [], selectedCell = null, turn = 'white', currentLevel = 1, hints = [], mustJump = false;
 
+    // Bot strategiyasi (Yangi o'yinda o'zgaradi)
+    let botStrategy = 'center';
+
     function initBoard() {
         board = Array(8).fill(null).map(() => Array(8).fill(null));
         for (let r = 0; r < 8; r++) {
@@ -249,9 +252,18 @@
             selectedCell = null; hints = [];
             checkGlobalMustJump();
             const statusEl = document.getElementById('status');
+
+            let anyMove = false;
+            for(let i=0; i<8; i++) for(let j=0; j<8; j++) {
+                if(board[i][j] && board[i][j].c === turn && getPieceMoves(i,j).length > 0) anyMove = true;
+            }
+            if(!anyMove) {
+                statusEl.innerText = turn === 'black' ? "G'alaba! Siz yutdingiz." : "Yutqazdingiz!";
+                return;
+            }
+
             if (turn === 'black') {
                 statusEl.innerText = "AI o'ylamoqda...";
-                // Interfeys yozuvni ko'rsatib ulgurishi uchun kichik tanaffus bilan AIni ishga tushiramiz
                 setTimeout(aiMove, 50);
             } else {
                 statusEl.innerText = "Sizning navbatingiz";
@@ -346,10 +358,10 @@
         }
     }
 
-    // GRANDMASTER UCHUN KUCHAYTIRILGAN BAHOLASH TIZIMI
     function evaluateBoard(b) {
-        let blackScore = 0;
-        let whiteScore = 0;
+        let score = 0;
+        let blackCount = 0;
+        let whiteCount = 0;
 
         for (let r = 0; r < 8; r++) {
             for (let c = 0; c < 8; c++) {
@@ -357,48 +369,62 @@
                 if (p) {
                     let val = 0;
                     if (p.k) {
-                        val = 300; // Damka eng katta qadrga ega
+                        val = 500;
                     } else {
-                        val = 100; // Oddiy tosh
-                        // Toshni oldinga siljitishga undaymiz
-                        if (p.c === 'black') {
-                            val += (r * 5);
-                            if (r === 0) val += 30; // Qora o'z orqa qatorini qattiq himoya qiladi
+                        val = 100;
+                        let advanceVal = p.c === 'black' ? r : (7 - r);
+
+                        // O'zgaruvchan strategiyalar qismi
+                        if (botStrategy === 'aggressive') {
+                            val += advanceVal * 5; // Tezroq damkaga qarab chopish
+                            if ((p.c === 'black' && r === 0) || (p.c === 'white' && r === 7)) val += 10;
+                        } else if (botStrategy === 'defensive') {
+                            val += advanceVal * 2; // Ehtiyotkorlik bilan borish
+                            if ((p.c === 'black' && r === 0) || (p.c === 'white' && r === 7)) val += 60; // Orqa chiziqni qattiq himoya qilish
                         } else {
-                            val += ((7 - r) * 5);
-                            if (r === 7) val += 30; // Oqlar ham shunday
+                            val += advanceVal * 3;
+                            if ((p.c === 'black' && r === 0) || (p.c === 'white' && r === 7)) val += 30;
                         }
                     }
 
-                    // Markaz va chekkalar strategiyasi
-                    if (c === 0 || c === 7) val += 15; // Chekkalar himoyalangan
-                    else if (c >= 2 && c <= 5 && r >= 3 && r <= 4) val += 20; // Markaziy xavfsiz pozitsiyalar
+                    // Markaz va chekka strategiyalari
+                    let isCenter = (c >= 2 && c <= 5 && r >= 3 && r <= 4);
+                    let isEdge = (c === 0 || c === 7);
 
-                    if (p.c === 'black') blackScore += val;
-                    else whiteScore += val;
+                    if (botStrategy === 'center' && isCenter) {
+                        val += 25;
+                    } else if (botStrategy === 'edge' && isEdge) {
+                        val += 25;
+                    } else if (isCenter) {
+                        val += 10; // Umumiy holatdagi markaz foydasi
+                    }
+
+                    if (p.c === 'black') {
+                        score += val;
+                        blackCount++;
+                    } else {
+                        score -= val;
+                        whiteCount++;
+                    }
                 }
             }
         }
 
-        // Agar oq toshlar umuman qolmasa, bot aniq yutganini tushunib eng oxirgi zarbani beradi
-        if (whiteScore === 0) return 99999;
-        if (blackScore === 0) return -99999;
+        if (whiteCount === 0) return 999999;
+        if (blackCount === 0) return -999999;
 
-        return blackScore - whiteScore;
+        return score;
     }
 
-    let nodesEvaluated = 0;
     function minimax(b, depth, alpha, beta, isMaximizing) {
-        nodesEvaluated++;
-        // Juda uzoq hisoblab qotib qolmasligi uchun maksimal tugun chegarasi
-        if (depth === 0 || nodesEvaluated > 300000) {
+        if (depth === 0) {
             return evaluateBoard(b);
         }
 
         let color = isMaximizing ? 'black' : 'white';
         let moves = getAllLegalMoves(b, color);
 
-        if (moves.length === 0) return isMaximizing ? -9999 : 9999;
+        if (moves.length === 0) return isMaximizing ? -99999 : 99999;
 
         if (isMaximizing) {
             let maxEval = -Infinity;
@@ -408,7 +434,7 @@
                 unmakeMove(b, move, undoData);
                 maxEval = Math.max(maxEval, ev);
                 alpha = Math.max(alpha, ev);
-                if (beta <= alpha) break; // Qolgan keraksiz yo'llarni qirqib tashlaymiz
+                if (beta <= alpha) break;
             }
             return maxEval;
         } else {
@@ -427,12 +453,15 @@
 
     function aiMove() {
         let moves = getAllLegalMoves(board, 'black');
-        if (moves.length === 0) { document.getElementById('status').innerText = "G'alaba! Siz yutdingiz."; return; }
+        if (moves.length === 0) {
+            document.getElementById('status').innerText = "G'alaba! Siz yutdingiz.";
+            return;
+        }
 
         let depthLimit = 1;
-        if (currentLevel === 2) depthLimit = 4;
-        else if (currentLevel === 3) depthLimit = 6;
-        else if (currentLevel === 4) depthLimit = 8; // Grandmaster endi juda aqlli va 8 qadam bilan xatosiz o'ynaydi
+        if (currentLevel === 2) depthLimit = 2;
+        else if (currentLevel === 3) depthLimit = 4;
+        else if (currentLevel === 4) depthLimit = 6;
 
         let bestMove = null;
 
@@ -440,7 +469,6 @@
             bestMove = moves[Math.floor(Math.random() * moves.length)];
         } else {
             let bestScore = -Infinity;
-            nodesEvaluated = 0;
             let bestMoves = [];
 
             for (let move of moves) {
@@ -462,8 +490,19 @@
     }
 
     function toggleModal(s) { document.getElementById('levelModal').style.display = s ? 'flex' : 'none'; }
-    function selectLevel(l, n) { currentLevel = l; document.getElementById('currentLevelDisplay').innerText = "Daraja: " + n; toggleModal(false); resetGame(); }
+    function selectLevel(l, n) {
+        currentLevel = l;
+        document.getElementById('currentLevelDisplay').innerText = "Daraja: " + n;
+        toggleModal(false);
+        resetGame();
+    }
+
     function resetGame() {
+        // Har yangi o'yinda bot yangi tasodifiy strategiya tanlaydi
+        const strategies = ['aggressive', 'defensive', 'center', 'edge'];
+        botStrategy = strategies[Math.floor(Math.random() * strategies.length)];
+        console.log("Botning joriy strategiyasi: " + botStrategy);
+
         document.querySelectorAll('.piece').forEach(p => p.remove());
         initBoard();
         turn = 'white';
