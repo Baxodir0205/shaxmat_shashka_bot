@@ -3,52 +3,23 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Shashka Pro AI - Grandmaster Edition</title>
+    <title>Shashka Pro Pro</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; font-family: sans-serif; -webkit-tap-highlight-color: transparent; }
         body { background: #1a1a1a; display: flex; justify-content: center; align-items: center; min-height: 100vh; color: white; }
         .game-container { width: 100%; max-width: 400px; background: #262421; border-radius: 12px; padding: 15px; }
-
-        .board-wrapper {
-            width: 100%;
-            aspect-ratio: 1 / 1;
-            background: #312e2b;
-            padding: 2px;
-            border-radius: 4px;
-            margin: 15px 0;
-            position: relative;
-        }
-        .board {
-            display: grid;
-            grid-template-columns: repeat(8, 1fr);
-            grid-template-rows: repeat(8, 1fr);
-            width: 100%;
-            height: 100%;
-        }
+        .board-wrapper { width: 100%; aspect-ratio: 1 / 1; background: #312e2b; padding: 2px; border-radius: 4px; margin: 15px 0; position: relative; }
+        .board { display: grid; grid-template-columns: repeat(8, 1fr); grid-template-rows: repeat(8, 1fr); width: 100%; height: 100%; }
         .cell { width: 100%; height: 100%; position: relative; cursor: pointer; }
         .cell.light { background: #ebecd0; }
         .cell.dark { background: #779556; }
         .cell.selected { background: #f6f669 !important; }
-
-        .piece {
-            width: 11%;
-            height: 11%;
-            border-radius: 50%;
-            position: absolute;
-            z-index: 10;
-            transition: all 0.4s cubic-bezier(0.45, 0.05, 0.55, 0.95);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            pointer-events: none;
-        }
+        .piece { width: 11%; height: 11%; border-radius: 50%; position: absolute; z-index: 10; transition: all 0.4s cubic-bezier(0.45, 0.05, 0.55, 0.95); display: flex; align-items: center; justify-content: center; pointer-events: none; }
         .piece.white { background: #fff; border: 3px solid #ccc; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
         .piece.black { background: #333; border: 3px solid #000; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
         .piece.king::after { content: "★"; color: gold; font-size: 20px; }
-
         .hint::after { content: ""; width: 25%; height: 25%; background: rgba(0,0,0,0.2); border-radius: 50%; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); }
-
         .status-box { background: #312e2b; padding: 10px; border-radius: 8px; text-align: center; font-weight: bold; border-bottom: 2px solid #7fa650; }
         .btn-main-group { display: flex; gap: 8px; }
         .btn-action { flex: 1; padding: 12px; border: none; border-radius: 8px; font-weight: bold; background: #45423e; color: white; cursor: pointer; }
@@ -88,6 +59,7 @@
 <script>
     const tg = window.Telegram.WebApp; tg.expand();
     let board = [], selectedCell = null, turn = 'white', currentLevel = 1, hints = [], mustJump = false;
+    let jumpingPiece = null; // Ketma-ket urishni boshqaramiz
 
     function initBoard() {
         board = Array(8).fill(null).map(() => Array(8).fill(null));
@@ -106,7 +78,6 @@
         const boardEl = document.getElementById('board');
         const wrapper = document.getElementById('boardWrapper');
         boardEl.innerHTML = '';
-
         for (let r = 0; r < 8; r++) {
             for (let c = 0; c < 8; c++) {
                 const cell = document.createElement('div');
@@ -117,27 +88,17 @@
                 boardEl.appendChild(cell);
             }
         }
-
         const currentIds = [];
         for(let r=0; r<8; r++) for(let c=0; c<8; c++) if(board[r][c]) currentIds.push(board[r][c].id);
-
-        document.querySelectorAll('.piece').forEach(p => {
-            if(!currentIds.includes(p.id)) p.remove();
-        });
-
+        document.querySelectorAll('.piece').forEach(p => { if(!currentIds.includes(p.id)) p.remove(); });
         for (let r = 0; r < 8; r++) {
             for (let c = 0; c < 8; c++) {
                 const pData = board[r][c];
                 if (pData) {
                     let pEl = document.getElementById(pData.id);
-                    if (!pEl) {
-                        pEl = document.createElement('div');
-                        pEl.id = pData.id;
-                        wrapper.appendChild(pEl);
-                    }
+                    if (!pEl) { pEl = document.createElement('div'); pEl.id = pData.id; wrapper.appendChild(pEl); }
                     pEl.className = `piece ${pData.c} ${pData.k ? 'king' : ''}`;
-                    pEl.style.left = (c * 12.5 + 0.7) + "%";
-                    pEl.style.top = (r * 12.5 + 0.7) + "%";
+                    pEl.style.left = (c * 12.5 + 0.7) + "%"; pEl.style.top = (r * 12.5 + 0.7) + "%";
                 }
             }
         }
@@ -149,28 +110,24 @@
             for (let c = 0; c < 8; c++) {
                 if (board[r][c]?.c === turn) {
                     const moves = getPieceMoves(r, c);
-                    if (moves.some(m => m.jump)) { mustJump = true; return; }
+                    if (moves.some(m => m.jump)) { mustJump = true; return true; }
                 }
             }
         }
+        return false;
     }
 
     function getPieceMoves(r, c) {
         const p = board[r][c]; if (!p) return [];
         let moves = [];
         const dirs = [[1, 1], [1, -1], [-1, 1], [-1, -1]];
-
         dirs.forEach(d => {
             if (p.k) {
-                let nr = r + d[0], nc = c + d[1];
-                let enemyPos = null;
+                let nr = r + d[0], nc = c + d[1], enemyPos = null;
                 while (nr >= 0 && nr < 8 && nc >= 0 && nc < 8) {
                     if (!board[nr][nc]) {
-                        if (!enemyPos) {
-                            if (!mustJump) moves.push({ tr: nr, tc: nc, jump: null });
-                        } else {
-                            moves.push({ tr: nr, tc: nc, jump: { ...enemyPos } });
-                        }
+                        if (!enemyPos) { if (!mustJump) moves.push({ tr: nr, tc: nc, jump: null }); }
+                        else moves.push({ tr: nr, tc: nc, jump: { ...enemyPos } });
                     } else {
                         if (board[nr][nc].c === p.c) break;
                         if (enemyPos) break;
@@ -180,20 +137,16 @@
                 }
             } else {
                 if (!mustJump) {
-                    const forward = p.c === 'white' ? -1 : 1;
-                    if (d[0] === forward) {
+                    const fwd = p.c === 'white' ? -1 : 1;
+                    if (d[0] === fwd) {
                         let nr = r + d[0], nc = c + d[1];
-                        if (nr >= 0 && nr < 8 && nc >= 0 && nc < 8 && !board[nr][nc]) {
-                            moves.push({ tr: nr, tc: nc, jump: null });
-                        }
+                        if (nr >= 0 && nr < 8 && nc >= 0 && nc < 8 && !board[nr][nc]) moves.push({ tr: nr, tc: nc, jump: null });
                     }
                 }
                 let nr = r + d[0], nc = c + d[1];
                 if (nr >= 0 && nr < 8 && nc >= 0 && nc < 8 && board[nr][nc] && board[nr][nc].c !== p.c) {
                     let jr = nr + d[0], jc = nc + d[1];
-                    if (jr >= 0 && jr < 8 && jc >= 0 && jc < 8 && !board[jr][jc]) {
-                        moves.push({ tr: jr, tc: jc, jump: { r: nr, c: nc } });
-                    }
+                    if (jr >= 0 && jr < 8 && jc >= 0 && jc < 8 && !board[jr][jc]) moves.push({ tr: jr, tc: jc, jump: { r: nr, c: nc } });
                 }
             }
         });
@@ -203,7 +156,14 @@
 
     function handleClick(r, c) {
         if (turn !== 'white') return;
+        if (jumpingPiece && (r !== jumpingPiece.r || c !== jumpingPiece.c)) {
+            // Agar ketma-ket urish kerak bo'lsa, faqat o'sha donani tanlash mumkin
+            if (hints.some(h => h.tr === r && h.tc === c)) { /* Pastga tushadi */ }
+            else return;
+        }
+
         if (board[r][c]?.c === 'white') {
+            if (jumpingPiece && (r !== jumpingPiece.r || c !== jumpingPiece.c)) return;
             selectedCell = { r, c };
             hints = getPieceMoves(r, c);
         } else if (selectedCell) {
@@ -215,182 +175,64 @@
 
     function executeMove(fr, fc, move) {
         const piece = board[fr][fc];
-        if(!piece) return;
-
         board[move.tr][move.tc] = piece;
         board[fr][fc] = null;
-
-        if (move.jump) {
-            board[move.jump.r][move.jump.c] = null;
-        }
-
+        if (move.jump) board[move.jump.r][move.jump.c] = null;
         if ((move.tr === 0 && piece.c === 'white') || (move.tr === 7 && piece.c === 'black')) piece.k = true;
 
         renderBoard();
 
         if (move.jump) {
-            checkGlobalMustJump();
+            mustJump = true;
             const nextJumps = getPieceMoves(move.tr, move.tc).filter(m => m.jump);
             if (nextJumps.length > 0) {
+                jumpingPiece = { r: move.tr, c: move.tc };
                 selectedCell = { r: move.tr, c: move.tc };
                 hints = nextJumps;
+                if (turn === 'black') setTimeout(() => executeMove(move.tr, move.tc, nextJumps[0]), 600);
                 renderBoard();
                 return;
             }
         }
 
+        jumpingPiece = null;
         setTimeout(() => {
             turn = turn === 'white' ? 'black' : 'white';
             selectedCell = null; hints = [];
             checkGlobalMustJump();
-            const statusEl = document.getElementById('status');
-            if (turn === 'black') {
-                statusEl.innerText = "AI o'ylamoqda...";
-                setTimeout(aiMove, 100);
-            } else {
-                statusEl.innerText = "Sizning navbatingiz";
-            }
+            document.getElementById('status').innerText = turn === 'black' ? "AI o'ylamoqda..." : "Sizning navbatingiz";
+            if (turn === 'black') setTimeout(aiMove, 600);
             renderBoard();
         }, 300);
     }
 
-    // --- KUCHAYTIRILGAN AI LOGIKASI ---
-
     function aiMove() {
-        const depths = { 1: 2, 2: 5, 3: 8, 4: 15 };
-        const depth = depths[currentLevel];
-        const move = getBestMove(depth);
-
-        if (!move) {
-            document.getElementById('status').innerText = "G'alaba! Siz yutdingiz.";
-            return;
-        }
-        executeMove(move.fr, move.fc, move);
-    }
-
-    function getBestMove(depth) {
-        let moves = getAllPossibleMoves('black');
-        if (moves.length === 0) return null;
-
-        // Alpha-beta uchun yurishlarni tartiblash (jumps first)
-        moves.sort((a, b) => (b.jump ? 1 : 0) - (a.jump ? 1 : 0));
-
-        let bestScore = -Infinity;
-        let bestMove = moves[0];
-        let alpha = -Infinity;
-        let beta = Infinity;
-
-        for (let move of moves) {
-            let backup = JSON.parse(JSON.stringify(board));
-            simulateMoveStatic(move);
-            let score = minimax(depth - 1, false, alpha, beta);
-            board = backup;
-
-            if (score > bestScore) {
-                bestScore = score;
-                bestMove = move;
-            }
-            alpha = Math.max(alpha, bestScore);
-        }
-        return bestMove;
-    }
-
-    function minimax(depth, isMaximizing, alpha, beta) {
-        if (depth === 0) return evaluateBoard();
-
-        let player = isMaximizing ? 'black' : 'white';
-        let moves = getAllPossibleMoves(player);
-
-        if (moves.length === 0) return isMaximizing ? -10000 : 10000;
-
-        if (isMaximizing) {
-            let maxEval = -Infinity;
-            for (let move of moves) {
-                let backup = JSON.parse(JSON.stringify(board));
-                simulateMoveStatic(move);
-                let eval = minimax(depth - 1, false, alpha, beta);
-                board = backup;
-                maxEval = Math.max(maxEval, eval);
-                alpha = Math.max(alpha, eval);
-                if (beta <= alpha) break;
-            }
-            return maxEval;
-        } else {
-            let minEval = Infinity;
-            for (let move of moves) {
-                let backup = JSON.parse(JSON.stringify(board));
-                simulateMoveStatic(move);
-                let eval = minimax(depth - 1, true, alpha, beta);
-                board = backup;
-                minEval = Math.min(minEval, eval);
-                beta = Math.min(beta, eval);
-                if (beta <= alpha) break;
-            }
-            return minEval;
-        }
-    }
-
-    function evaluateBoard() {
-        let score = 0;
-        for (let r = 0; r < 8; r++) {
-            for (let c = 0; c < 8; c++) {
-                let p = board[r][c];
-                if (p) {
-                    let weight = p.k ? 10 : 5;
-                    // Strategik pozitsiya ballari
-                    let posBonus = 0;
-                    if (c === 0 || c === 7) posBonus += 1; // Chekkada turish xavfsizroq
-                    if (r >= 3 && r <= 4 && c >= 3 && c <= 4) posBonus += 2; // Markazni nazorat qilish
-
-                    if (p.c === 'black') {
-                        score += weight + posBonus;
-                        if (!p.k) score += (r * 0.5); // Oldinga yurishni rag'batlantirish
-                    } else {
-                        score -= (weight + posBonus);
-                        if (!p.k) score -= ((7 - r) * 0.5);
-                    }
-                }
-            }
-        }
-        return score;
-    }
-
-    function getAllPossibleMoves(player) {
         let all = [];
-        let hasJump = false;
-        for (let r = 0; r < 8; r++) {
-            for (let c = 0; c < 8; c++) {
-                if (board[r][c]?.c === player) {
-                    let m = getPieceMoves(r, c);
-                    m.forEach(move => {
-                        if (move.jump) hasJump = true;
-                        all.push({ fr: r, fc: c, ...move });
-                    });
-                }
+        for(let r=0; r<8; r++) for(let c=0; c<8; c++) if(board[r][c]?.c === 'black') {
+            const m = getPieceMoves(r, c);
+            m.forEach(move => all.push({fr: r, fc: c, ...move}));
+        }
+        if (all.length === 0) { document.getElementById('status').innerText = "G'alaba! Siz yutdingiz."; return; }
+
+        let jumps = all.filter(m => m.jump);
+        let bestMove;
+        if (jumps.length > 0) {
+            // Grandmaster mantiqi: eng ko'p uradigan yo'lni tanlash (soddalashtirilgan)
+            bestMove = jumps[Math.floor(Math.random() * jumps.length)];
+        } else {
+            if (currentLevel >= 3) {
+                all.sort((a, b) => (b.tr === 7 ? 1 : 0) - (a.tr === 7 ? 1 : 0));
+                bestMove = all[0];
+            } else {
+                bestMove = all[Math.floor(Math.random() * all.length)];
             }
         }
-        return hasJump ? all.filter(a => a.jump) : all;
-    }
-
-    function simulateMoveStatic(move) {
-        let p = board[move.fr][move.fc];
-        board[move.tr][move.tc] = p;
-        board[move.fr][move.fc] = null;
-        if (move.jump) board[move.jump.r][move.jump.c] = null;
-        if ((move.tr === 0 && p.c === 'white') || (move.tr === 7 && p.c === 'black')) p.k = true;
+        executeMove(bestMove.fr, bestMove.fc, bestMove);
     }
 
     function toggleModal(s) { document.getElementById('levelModal').style.display = s ? 'flex' : 'none'; }
     function selectLevel(l, n) { currentLevel = l; document.getElementById('currentLevelDisplay').innerText = "Daraja: " + n; toggleModal(false); resetGame(); }
-
-    function resetGame() {
-        document.querySelectorAll('.piece').forEach(p => p.remove());
-        initBoard();
-        turn = 'white';
-        selectedCell = null; hints = [];
-        document.getElementById('status').innerText = "Sizning navbatingiz";
-        renderBoard();
-    }
+    function resetGame() { document.querySelectorAll('.piece').forEach(p => p.remove()); initBoard(); turn = 'white'; selectedCell = null; hints = []; jumpingPiece = null; document.getElementById('status').innerText = "Sizning navbatingiz"; renderBoard(); }
 
     initBoard(); renderBoard();
 </script>
