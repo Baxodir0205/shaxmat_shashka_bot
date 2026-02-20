@@ -26,7 +26,6 @@
         .cell.dark { background: #779556; }
         .cell.selected { background: #f6f669 !important; }
 
-
         .piece {
             width: 12.5%;
             height: 12.5%;
@@ -40,7 +39,6 @@
             pointer-events: none;
         }
 
-        /* Yurish nuqtalari (Hint) - TUZATILDI */
         .hint::after {
             content: ""; width: 15px; height: 15px; background: rgba(0,0,0,0.15);
             border-radius: 50%; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
@@ -94,7 +92,16 @@
         white: { king: '♔', queen: '♕', rook: '♖', bishop: '♗', knight: '♘', pawn: '♙' },
         black: { king: '♚', queen: '♛', rook: '♜', bishop: '♝', knight: '♞', pawn: '♟' }
     };
-    const values = { pawn: 10, knight: 30, bishop: 30, rook: 50, queen: 90, king: 900 };
+    const values = { pawn: 10, knight: 30, bishop: 30, rook: 50, queen: 90, king: 9000 };
+
+    const dirs = {
+        rook: [[0,1],[0,-1],[1,0],[-1,0]],
+        bishop: [[1,1],[1,-1],[-1,1],[-1,-1]],
+        queen: [[0,1],[0,-1],[1,0],[-1,0],[1,1],[1,-1],[-1,1],[-1,-1]],
+        king: [[0,1],[0,-1],[1,0],[-1,0],[1,1],[1,-1],[-1,1],[-1,-1]],
+        knight: [[2,1],[2,-1],[-2,1],[-2,-1],[1,2],[1,-2],[-1,2],[-1,-2]]
+    };
+
     let board = [], selectedCell = null, turn = 'white', currentLevel = 1, hints = [];
 
     function initBoard() {
@@ -154,109 +161,229 @@
         }
     }
 
-    function handleClick(r, c) {
-        if (turn !== 'white') return;
-        const p = board[r][c];
-        if (p?.c === 'white') {
-            selectedCell = { r, c };
-            hints = getMoves(r, c);
-        } else if (selectedCell) {
-            const move = hints.find(h => h.tr === r && h.tc === c);
-            if (move) {
-                doMove(selectedCell.r, selectedCell.c, r, c);
-                turn = 'black';
-                selectedCell = null; hints = [];
-                document.getElementById('status').innerText = "AI o'ylamoqda...";
-                setTimeout(aiMove, 600);
-            } else { selectedCell = null; hints = []; }
-        }
-        renderBoard();
-    }
-
-    function getMoves(r, c) {
-        const p = board[r][c]; if (!p) return [];
+    function getMoves(b, r, c) {
+        const p = b[r][c]; if (!p) return [];
         let m = [];
-        const dirs = {
-            rook: [[0,1],[0,-1],[1,0],[-1,0]],
-            bishop: [[1,1],[1,-1],[-1,1],[-1,-1]],
-            queen: [[0,1],[0,-1],[1,0],[-1,0],[1,1],[1,-1],[-1,1],[-1,-1]],
-            king: [[0,1],[0,-1],[1,0],[-1,0],[1,1],[1,-1],[-1,1],[-1,-1]],
-            knight: [[2,1],[2,-1],[-2,1],[-2,-1],[1,2],[1,-2],[-1,2],[-1,-2]]
-        };
         if (p.p === 'pawn') {
             let d = p.c === 'white' ? -1 : 1;
-            if (board[r+d] && !board[r+d][c]) {
+            if (b[r+d] && !b[r+d][c]) {
                 m.push({tr: r+d, tc: c});
-                if (((p.c==='white'&&r===6)||(p.c==='black'&&r===1)) && !board[r+d][c] && !board[r+2*d][c]) m.push({tr: r+2*d, tc: c});
+                if (((p.c==='white'&&r===6)||(p.c==='black'&&r===1)) && !b[r+d][c] && !b[r+2*d][c]) m.push({tr: r+2*d, tc: c});
             }
             [[-1,d],[1,d]].forEach(atk => {
                 let nr = r+atk[1], nc = c+atk[0];
-                if (board[nr] && board[nr][nc] && board[nr][nc].c !== p.c) m.push({tr: nr, tc: nc});
+                if (b[nr] && b[nr][nc] && b[nr][nc].c !== p.c) m.push({tr: nr, tc: nc});
             });
         } else if (['rook','bishop','queen'].includes(p.p)) {
             dirs[p.p].forEach(d => {
                 let nr = r+d[0], nc = c+d[1];
                 while(nr>=0 && nr<8 && nc>=0 && nc<8) {
-                    if (!board[nr][nc]) m.push({tr:nr, tc:nc});
-                    else { if(board[nr][nc].c !== p.c) m.push({tr:nr, tc:nc}); break; }
+                    if (!b[nr][nc]) m.push({tr:nr, tc:nc});
+                    else { if(b[nr][nc].c !== p.c) m.push({tr:nr, tc:nc}); break; }
                     nr+=d[0]; nc+=d[1];
                 }
             });
         } else {
             dirs[p.p].forEach(d => {
                 let nr = r+d[0], nc = c+d[1];
-                if (nr>=0 && nr<8 && nc>=0 && nc<8 && (!board[nr][nc] || board[nr][nc].c !== p.c)) m.push({tr:nr, tc:nc});
+                if (nr>=0 && nr<8 && nc>=0 && nc<8 && (!b[nr][nc] || b[nr][nc].c !== p.c)) m.push({tr:nr, tc:nc});
             });
         }
         return m.map(move => ({fr: r, fc: c, ...move}));
     }
 
-    function doMove(fr, fc, tr, tc) {
-        if(board[tr][tc]) {
+    function handleClick(r, c) {
+        if (turn !== 'white') return;
+        const p = board[r][c];
+        if (p?.c === 'white') {
+            selectedCell = { r, c };
+            hints = getMoves(board, r, c);
+        } else if (selectedCell) {
+            const move = hints.find(h => h.tr === r && h.tc === c);
+            if (move) {
+                doMove(selectedCell.r, selectedCell.c, r, c);
 
+                // Qora shoh borligini tekshirish
+                let bKing = false;
+                for(let i=0;i<8;i++) for(let j=0;j<8;j++) if(board[i][j]?.p==='king' && board[i][j]?.c==='black') bKing = true;
+
+                if(!bKing) {
+                    document.getElementById('status').innerText = "G'alaba! Siz yutdingiz.";
+                    renderBoard();
+                    return;
+                }
+
+                turn = 'black';
+                selectedCell = null; hints = [];
+                document.getElementById('status').innerText = "AI o'ylamoqda...";
+                setTimeout(aiMove, 50); // Mantiq ishlashi uchun tanaffus
+            } else { selectedCell = null; hints = []; }
         }
+        renderBoard();
+    }
+
+    function doMove(fr, fc, tr, tc) {
         board[tr][tc] = board[fr][fc];
         board[fr][fc] = null;
         if (board[tr][tc].p === 'pawn' && (tr === 0 || tr === 7)) board[tr][tc].p = 'queen';
         renderBoard();
     }
 
+    // --- AI VA MINIMAX FUNKSIYALARI ---
+
+    function makeMove(b, move) {
+        let captured = b[move.tr][move.tc];
+        let p = b[move.fr][move.fc];
+        b[move.tr][move.tc] = p;
+        b[move.fr][move.fc] = null;
+        let promoted = false;
+        if (p.p === 'pawn' && (move.tr === 0 || move.tr === 7)) {
+            p.p = 'queen';
+            promoted = true;
+        }
+        return { captured, promoted };
+    }
+
+    function unmakeMove(b, move, undoData) {
+        let p = b[move.tr][move.tc];
+        if (undoData.promoted) p.p = 'pawn';
+        b[move.fr][move.fc] = p;
+        b[move.tr][move.tc] = undoData.captured;
+    }
+
+    function evaluateBoard(b) {
+        let score = 0;
+        let wKing = false;
+        let bKing = false;
+
+        for (let r = 0; r < 8; r++) {
+            for (let c = 0; c < 8; c++) {
+                let p = b[r][c];
+                if (p) {
+                    let val = values[p.p];
+
+                    // Pozitsion baholash (Markazni egallash afzalligi)
+                    if (p.p === 'knight' || p.p === 'bishop') {
+                        if (r >= 2 && r <= 5 && c >= 2 && c <= 5) val += 1.5;
+                    }
+                    if (p.p === 'pawn') {
+                        // Piyodalar oldinga siljigani sari qadri oshadi
+                        val += (p.c === 'white' ? (6 - r) : (r - 1)) * 0.5;
+                    }
+                    if (p.p === 'king') {
+                        if (p.c === 'white') wKing = true;
+                        if (p.c === 'black') bKing = true;
+                    }
+
+                    if (p.c === 'black') score += val;
+                    else score -= val;
+                }
+            }
+        }
+
+        if (!wKing) return 999999; // Oq shoh yutib olinsa
+        if (!bKing) return -999999; // Qora shoh yutib olinsa
+
+        return score;
+    }
+
+    function minimax(b, depth, alpha, beta, isMaximizing) {
+        if (depth === 0) return evaluateBoard(b);
+
+        let color = isMaximizing ? 'black' : 'white';
+        let moves = [];
+        for(let r=0; r<8; r++) for(let c=0; c<8; c++) {
+            if(b[r][c] && b[r][c].c === color) {
+                moves = moves.concat(getMoves(b, r, c));
+            }
+        }
+
+        if (moves.length === 0) return isMaximizing ? -999999 : 999999;
+
+        // Alpha-Beta algoritmini tezlashtirish uchun avval tosh uradigan yurishlarni tekshiradi
+        moves.sort((m1, m2) => (b[m2.tr][m2.tc] ? 1 : 0) - (b[m1.tr][m1.tc] ? 1 : 0));
+
+        if (isMaximizing) {
+            let maxEval = -Infinity;
+            for (let move of moves) {
+                let undoData = makeMove(b, move);
+                let ev = minimax(b, depth - 1, alpha, beta, false);
+                unmakeMove(b, move, undoData);
+                maxEval = Math.max(maxEval, ev);
+                alpha = Math.max(alpha, ev);
+                if (beta <= alpha) break;
+            }
+            return maxEval;
+        } else {
+            let minEval = Infinity;
+            for (let move of moves) {
+                let undoData = makeMove(b, move);
+                let ev = minimax(b, depth - 1, alpha, beta, true);
+                unmakeMove(b, move, undoData);
+                minEval = Math.min(minEval, ev);
+                beta = Math.min(beta, ev);
+                if (beta <= alpha) break;
+            }
+            return minEval;
+        }
+    }
+
     function aiMove() {
-        let all = [];
-        for(let r=0; r<8; r++) for(let c=0; c<8; c++) if(board[r][c]?.c === 'black') all = all.concat(getMoves(r, c));
-        if (!all.length) {
-            document.getElementById('status').innerText = "Mot! Siz yutdingiz.";
-            sendGameOver(true);
+        let moves = [];
+        for(let r=0; r<8; r++) for(let c=0; c<8; c++) {
+            if(board[r][c] && board[r][c].c === 'black') moves = moves.concat(getMoves(board, r, c));
+        }
+
+        if (moves.length === 0) {
+            document.getElementById('status').innerText = "G'alaba! Siz yutdingiz.";
             return;
         }
 
-        let bestMove;
+        let depthLimit = 1;
+        if (currentLevel === 2) depthLimit = 2;
+        else if (currentLevel === 3) depthLimit = 3;
+        else if (currentLevel === 4) depthLimit = 4; // Grandmaster 4 qadam chuqurlikda fikrlaydi
+
+        let bestMove = null;
+
         if (currentLevel === 1) {
-            bestMove = all[Math.floor(Math.random() * all.length)];
+            bestMove = moves[Math.floor(Math.random() * moves.length)];
         } else {
-            let maxS = -20000;
-            all.forEach(m => {
-                let s = 0;
-                const target = board[m.tr][m.tc];
-                if (target) s += values[target.p] * 10;
-                if (currentLevel >= 2 && m.tr >= 2 && m.tr <= 5 && m.tc >= 2 && m.tc <= 5) s += 3;
-                if (s > maxS) { maxS = s; bestMove = m; }
-            });
+            let bestScore = -Infinity;
+            let bestMoves = [];
+
+            moves.sort((m1, m2) => (board[m2.tr][m2.tc] ? 1 : 0) - (board[m1.tr][m1.tc] ? 1 : 0));
+
+            for (let move of moves) {
+                let undoData = makeMove(board, move);
+                let score = minimax(board, depthLimit - 1, -Infinity, Infinity, false);
+                unmakeMove(board, move, undoData);
+
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestMoves = [move];
+                } else if (score === bestScore) {
+                    bestMoves.push(move);
+                }
+            }
+            bestMove = bestMoves[Math.floor(Math.random() * bestMoves.length)];
         }
 
         doMove(bestMove.fr, bestMove.fc, bestMove.tr, bestMove.tc);
         turn = 'white';
+
+        // Oq shoh qolganini tekshirish
+        let wKingStillAlive = false;
+        for(let r=0; r<8; r++) for(let c=0; c<8; c++) if(board[r][c]?.p==='king' && board[r][c]?.c==='white') wKingStillAlive = true;
+
+        if(!wKingStillAlive) {
+            document.getElementById('status').innerText = "Siz yutqazdingiz!";
+            renderBoard();
+            return;
+        }
+
         document.getElementById('status').innerText = "Sizning navbatingiz";
         renderBoard();
-    }
-
-    function sendGameOver(won) {
-        tg.sendData(JSON.stringify({
-            action: 'game_over',
-            game_type: 'chess',
-            won: won,
-            ai_level: currentLevel
-        }));
     }
 
     function toggleModal(s) { document.getElementById('levelModal').style.display = s ? 'flex' : 'none'; }
