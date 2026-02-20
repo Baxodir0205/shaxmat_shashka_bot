@@ -234,7 +234,6 @@
                 hints = nextJumps;
                 renderBoard();
 
-                // AI (bot) uchun navbatdagi avtomatik urish
                 if (turn === 'black') {
                     setTimeout(() => {
                         let nextBestMove = nextJumps[Math.floor(Math.random() * nextJumps.length)];
@@ -252,7 +251,8 @@
             const statusEl = document.getElementById('status');
             if (turn === 'black') {
                 statusEl.innerText = "AI o'ylamoqda...";
-                setTimeout(aiMove, 600);
+                // Interfeys yozuvni ko'rsatib ulgurishi uchun kichik tanaffus bilan AIni ishga tushiramiz
+                setTimeout(aiMove, 50);
             } else {
                 statusEl.innerText = "Sizning navbatingiz";
             }
@@ -260,28 +260,204 @@
         }, 300);
     }
 
-    function aiMove() {
-        let all = [];
-        for(let r=0; r<8; r++) for(let c=0; c<8; c++) if(board[r][c]?.c === 'black') {
-            const m = getPieceMoves(r, c);
-            m.forEach(move => all.push({fr: r, fc: c, ...move}));
-        }
+    // --- STRATEGIK SUN'IY INTELLEKT (MINIMAX) ---
 
-        if (all.length === 0) { document.getElementById('status').innerText = "G'alaba! Siz yutdingiz."; return; }
-
-        let jumps = all.filter(m => m.jump);
-        let bestMove;
-
-        if (jumps.length > 0) {
-            bestMove = jumps[Math.floor(Math.random() * jumps.length)];
-        } else {
-            if (currentLevel >= 3) {
-                all.sort((a, b) => (b.tr === 7 ? 1 : 0) - (a.tr === 7 ? 1 : 0));
-                bestMove = all[0];
+    function getSimulatedPieceMoves(b, r, c) {
+        const p = b[r][c];
+        let moves = [];
+        const dirs = [[1, 1], [1, -1], [-1, 1], [-1, -1]];
+        dirs.forEach(d => {
+            if (p.k) {
+                let nr = r + d[0], nc = c + d[1];
+                let enemyPos = null;
+                while (nr >= 0 && nr < 8 && nc >= 0 && nc < 8) {
+                    if (!b[nr][nc]) {
+                        if (!enemyPos) moves.push({ tr: nr, tc: nc, jump: null });
+                        else moves.push({ tr: nr, tc: nc, jump: { ...enemyPos } });
+                    } else {
+                        if (b[nr][nc].c === p.c) break;
+                        if (enemyPos) break;
+                        enemyPos = { r: nr, c: nc };
+                    }
+                    nr += d[0]; nc += d[1];
+                }
             } else {
-                bestMove = all[Math.floor(Math.random() * all.length)];
+                const forward = p.c === 'white' ? -1 : 1;
+                if (d[0] === forward) {
+                    let nr = r + d[0], nc = c + d[1];
+                    if (nr >= 0 && nr < 8 && nc >= 0 && nc < 8 && !b[nr][nc]) {
+                        moves.push({ tr: nr, tc: nc, jump: null });
+                    }
+                }
+                let nr = r + d[0], nc = c + d[1];
+                if (nr >= 0 && nr < 8 && nc >= 0 && nc < 8 && b[nr][nc] && b[nr][nc].c !== p.c) {
+                    let jr = nr + d[0], jc = nc + d[1];
+                    if (jr >= 0 && jr < 8 && jc >= 0 && jc < 8 && !b[jr][jc]) {
+                        moves.push({ tr: jr, tc: jc, jump: { r: nr, c: nc } });
+                    }
+                }
+            }
+        });
+        return moves;
+    }
+
+    function getAllLegalMoves(b, color) {
+        let moves = [];
+        let anyJump = false;
+        for (let r=0; r<8; r++) {
+            for (let c=0; c<8; c++) {
+                if (b[r][c] && b[r][c].c === color) {
+                    let pMoves = getSimulatedPieceMoves(b, r, c);
+                    pMoves.forEach(m => {
+                        if (m.jump) anyJump = true;
+                        moves.push({fr: r, fc: c, ...m});
+                    });
+                }
             }
         }
+        if (anyJump) return moves.filter(m => m.jump);
+        return moves;
+    }
+
+    function makeMove(b, move) {
+        let p = b[move.fr][move.fc];
+        let captured = null;
+        let becameKing = false;
+        b[move.tr][move.tc] = p;
+        b[move.fr][move.fc] = null;
+        if (move.jump) {
+            captured = b[move.jump.r][move.jump.c];
+            b[move.jump.r][move.jump.c] = null;
+        }
+        if (!p.k && ((move.tr === 0 && p.c === 'white') || (move.tr === 7 && p.c === 'black'))) {
+            p.k = true;
+            becameKing = true;
+        }
+        return { captured, becameKing };
+    }
+
+    function unmakeMove(b, move, undoData) {
+        let p = b[move.tr][move.tc];
+        if (undoData.becameKing) p.k = false;
+        b[move.fr][move.fc] = p;
+        b[move.tr][move.tc] = null;
+        if (move.jump && undoData.captured) {
+            b[move.jump.r][move.jump.c] = undoData.captured;
+        }
+    }
+
+    // GRANDMASTER UCHUN KUCHAYTIRILGAN BAHOLASH TIZIMI
+    function evaluateBoard(b) {
+        let blackScore = 0;
+        let whiteScore = 0;
+
+        for (let r = 0; r < 8; r++) {
+            for (let c = 0; c < 8; c++) {
+                let p = b[r][c];
+                if (p) {
+                    let val = 0;
+                    if (p.k) {
+                        val = 300; // Damka eng katta qadrga ega
+                    } else {
+                        val = 100; // Oddiy tosh
+                        // Toshni oldinga siljitishga undaymiz
+                        if (p.c === 'black') {
+                            val += (r * 5);
+                            if (r === 0) val += 30; // Qora o'z orqa qatorini qattiq himoya qiladi
+                        } else {
+                            val += ((7 - r) * 5);
+                            if (r === 7) val += 30; // Oqlar ham shunday
+                        }
+                    }
+
+                    // Markaz va chekkalar strategiyasi
+                    if (c === 0 || c === 7) val += 15; // Chekkalar himoyalangan
+                    else if (c >= 2 && c <= 5 && r >= 3 && r <= 4) val += 20; // Markaziy xavfsiz pozitsiyalar
+
+                    if (p.c === 'black') blackScore += val;
+                    else whiteScore += val;
+                }
+            }
+        }
+
+        // Agar oq toshlar umuman qolmasa, bot aniq yutganini tushunib eng oxirgi zarbani beradi
+        if (whiteScore === 0) return 99999;
+        if (blackScore === 0) return -99999;
+
+        return blackScore - whiteScore;
+    }
+
+    let nodesEvaluated = 0;
+    function minimax(b, depth, alpha, beta, isMaximizing) {
+        nodesEvaluated++;
+        // Juda uzoq hisoblab qotib qolmasligi uchun maksimal tugun chegarasi
+        if (depth === 0 || nodesEvaluated > 300000) {
+            return evaluateBoard(b);
+        }
+
+        let color = isMaximizing ? 'black' : 'white';
+        let moves = getAllLegalMoves(b, color);
+
+        if (moves.length === 0) return isMaximizing ? -9999 : 9999;
+
+        if (isMaximizing) {
+            let maxEval = -Infinity;
+            for (let move of moves) {
+                let undoData = makeMove(b, move);
+                let ev = minimax(b, depth - 1, alpha, beta, false);
+                unmakeMove(b, move, undoData);
+                maxEval = Math.max(maxEval, ev);
+                alpha = Math.max(alpha, ev);
+                if (beta <= alpha) break; // Qolgan keraksiz yo'llarni qirqib tashlaymiz
+            }
+            return maxEval;
+        } else {
+            let minEval = Infinity;
+            for (let move of moves) {
+                let undoData = makeMove(b, move);
+                let ev = minimax(b, depth - 1, alpha, beta, true);
+                unmakeMove(b, move, undoData);
+                minEval = Math.min(minEval, ev);
+                beta = Math.min(beta, ev);
+                if (beta <= alpha) break;
+            }
+            return minEval;
+        }
+    }
+
+    function aiMove() {
+        let moves = getAllLegalMoves(board, 'black');
+        if (moves.length === 0) { document.getElementById('status').innerText = "G'alaba! Siz yutdingiz."; return; }
+
+        let depthLimit = 1;
+        if (currentLevel === 2) depthLimit = 4;
+        else if (currentLevel === 3) depthLimit = 6;
+        else if (currentLevel === 4) depthLimit = 8; // Grandmaster endi juda aqlli va 8 qadam bilan xatosiz o'ynaydi
+
+        let bestMove = null;
+
+        if (currentLevel === 1) {
+            bestMove = moves[Math.floor(Math.random() * moves.length)];
+        } else {
+            let bestScore = -Infinity;
+            nodesEvaluated = 0;
+            let bestMoves = [];
+
+            for (let move of moves) {
+                let undoData = makeMove(board, move);
+                let score = minimax(board, depthLimit - 1, -Infinity, Infinity, false);
+                unmakeMove(board, move, undoData);
+
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestMoves = [move];
+                } else if (score === bestScore) {
+                    bestMoves.push(move);
+                }
+            }
+            bestMove = bestMoves[Math.floor(Math.random() * bestMoves.length)];
+        }
+
         executeMove(bestMove.fr, bestMove.fc, bestMove);
     }
 
