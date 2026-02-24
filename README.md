@@ -45,15 +45,6 @@ Hashlib (WebApp validation uchun)
 
 Logging
 
-📂 Loyiha strukturasi
-shaxmat_shashka_bot/
-│
-├── main.py
-├── bot_data.db
-├── requirements.txt
-├── README.md
-├── index.html
-├── chess.html
 ⚙️ O‘rnatish va ishga tushirish
 1️⃣ Repository’ni klon qilish
 git clone https://github.com/USERNAME/shaxmat_shashka_bot.git
